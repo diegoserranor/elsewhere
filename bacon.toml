@@ -1,0 +1,30 @@
+# bacon config — https://dystroy.org/bacon/config/
+# `bacon` alone starts the app and restarts it on every source change.
+
+default_job = "run"
+
+[jobs.run]
+command = ["cargo", "run"]
+need_stdout = true
+allow_warnings = true
+background = false
+on_change_strategy = "kill_then_restart"
+
+[jobs.check]
+command = ["cargo", "check"]
+need_stdout = false
+
+[jobs.clippy]
+command = ["cargo", "clippy"]
+need_stdout = false
+
+[jobs.test]
+command = ["cargo", "test"]
+need_stdout = true
+
+# In the run job: press r to restart manually, c to switch to check, etc.
+[keybindings]
+r = "job:run"
+c = "job:check"
+l = "job:clippy"
+t = "job:test"
