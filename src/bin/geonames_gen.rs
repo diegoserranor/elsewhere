@@ -23,6 +23,9 @@ const KEPT_FEATURE_CODES: &[&str] = &[
     "PPL", "PPLA", "PPLA2", "PPLA3", "PPLA4", "PPLA5", "PPLC", "PPLF", "PPLG", "PPLL", "PPLS",
 ];
 
+/// How many offending rows an error message names before it gives up.
+const MAX_REPORTED_ROWS: usize = 5;
+
 /// The columns of cities5000.txt we keep; the rest are dropped on parse.
 #[allow(dead_code)] // most fields are only read once the dataset is emitted
 #[derive(Debug)]
@@ -61,11 +64,11 @@ fn run() -> Result<()> {
     let filtered = cities.len();
     let cities = dedup(cities);
 
-    let mut timezones: HashSet<&str> = HashSet::new();
+    let timezones = validate_timezones(&cities)?;
+
     let mut empty_admin1 = 0;
     let mut unknown_countries: HashSet<&str> = HashSet::new();
     for city in &cities {
-        timezones.insert(&city.timezone);
         if city.admin1_code.is_empty() {
             empty_admin1 += 1;
         }
@@ -86,11 +89,62 @@ fn run() -> Result<()> {
     println!("  countries {}", countries.len());
     println!("  admin1    {}", admin1.len());
     println!("\nkept rows span:");
-    println!("  timezones             {}", timezones.len());
+    println!("  timezones (validated against jiff) {timezones}");
     println!("  empty admin1 codes    {empty_admin1}");
     println!("  unknown country codes {}", unknown_countries.len());
 
     Ok(())
+}
+
+/// Checks every kept row against the tzdb jiff reads, returning how many
+/// distinct zones the rows name. A zone jiff cannot resolve means the dump and
+/// this machine's tzdb disagree, so the run fails rather than emitting names
+/// the app would later choke on.
+fn validate_timezones(cities: &[RawCity]) -> Result<usize> {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    let mut missing: Vec<&RawCity> = Vec::new();
+    for city in cities {
+        if city.timezone.is_empty() {
+            missing.push(city);
+        } else {
+            *counts.entry(&city.timezone).or_default() += 1;
+        }
+    }
+
+    if !missing.is_empty() {
+        let sample: Vec<String> = missing
+            .iter()
+            .take(MAX_REPORTED_ROWS)
+            .map(|city| format!("{} {}", city.geonameid, city.name))
+            .collect();
+        return Err(format!(
+            "{} rows have an empty timezone: {}",
+            missing.len(),
+            sample.join(", ")
+        )
+        .into());
+    }
+
+    let mut unknown: Vec<(&str, usize)> = counts
+        .iter()
+        .filter(|(name, _)| jiff::tz::TimeZone::get(name).is_err())
+        .map(|(name, count)| (*name, *count))
+        .collect();
+    if !unknown.is_empty() {
+        unknown.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        let list: Vec<String> = unknown
+            .iter()
+            .map(|(name, count)| format!("  {name} ({count} rows)"))
+            .collect();
+        return Err(format!(
+            "{} timezones cannot be resolved by jiff:\n{}",
+            unknown.len(),
+            list.join("\n")
+        )
+        .into());
+    }
+
+    Ok(counts.len())
 }
 
 /// Rows whose feature code is not in the allowlist, most common first.
@@ -345,6 +399,12 @@ JP.40\tTokyo\tTokyo\t1850144";
         }
     }
 
+    fn city_in(geonameid: u32, name: &str, timezone: &str) -> RawCity {
+        let mut city = city(geonameid, name, "US", "IL", "PPL", 5000);
+        city.timezone = timezone.to_string();
+        city
+    }
+
     fn ids(cities: &[RawCity]) -> Vec<u32> {
         cities.iter().map(|city| city.geonameid).collect()
     }
@@ -401,6 +461,35 @@ JP.40\tTokyo\tTokyo\t1850144";
         // Equal populations tie-break on the lower geonameid, whatever the order.
         assert_eq!(ids(&dedup(rows())), [10]);
         assert_eq!(ids(&dedup(reversed)), [10]);
+    }
+
+    #[test]
+    fn validates_real_timezones() {
+        let cities = vec![
+            city_in(1, "Tokyo", "Asia/Tokyo"),
+            city_in(2, "Buenos Aires", "America/Argentina/Buenos_Aires"),
+            city_in(3, "Yokohama", "Asia/Tokyo"),
+        ];
+        assert_eq!(validate_timezones(&cities).unwrap(), 2);
+    }
+
+    #[test]
+    fn rejects_unknown_timezones() {
+        let cities = vec![
+            city_in(1, "Tokyo", "Asia/Tokyo"),
+            city_in(2, "Olympus", "Mars/Olympus_Mons"),
+            city_in(3, "Olympus Base", "Mars/Olympus_Mons"),
+        ];
+        let err = validate_timezones(&cities).unwrap_err().to_string();
+        assert!(err.contains("Mars/Olympus_Mons (2 rows)"), "{err}");
+    }
+
+    #[test]
+    fn rejects_empty_timezones() {
+        let cities = vec![city_in(1, "Tokyo", "Asia/Tokyo"), city_in(2, "Nowhere", "")];
+        let err = validate_timezones(&cities).unwrap_err().to_string();
+        assert!(err.contains("1 rows have an empty timezone"), "{err}");
+        assert!(err.contains("2 Nowhere"), "{err}");
     }
 
     #[test]
