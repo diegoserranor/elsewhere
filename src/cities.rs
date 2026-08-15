@@ -2,8 +2,6 @@
 //! committed, and embedded in the binary, so loading it cannot fail at runtime:
 //! a malformed line means the committed file is broken and panics in dev.
 
-#![allow(dead_code)] // the UI starts reading these in a later increment
-
 const DATA: &str = include_str!("../data/cities.tsv");
 const COLUMNS: usize = 7;
 

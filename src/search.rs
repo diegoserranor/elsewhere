@@ -2,8 +2,6 @@
 //! scored linear scan per keystroke is fine; the only thing worth precomputing
 //! is the lowercased text, so matching itself allocates nothing.
 
-#![allow(dead_code)] // the UI starts reading these in a later increment
-
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 
@@ -11,6 +9,9 @@ use crate::cities::City;
 
 pub struct SearchIndex {
     entries: Vec<Entry>,
+    /// Where each geonameid sits in `entries`, since that is the key the saved
+    /// list keeps.
+    by_geonameid: HashMap<u32, usize>,
     /// Names carried by more than one city, which need an admin1 to tell apart.
     ambiguous: HashSet<String>,
 }
@@ -35,7 +36,7 @@ impl SearchIndex {
             .map(|(name, _)| (*name).to_string())
             .collect();
 
-        let entries = cities
+        let entries: Vec<Entry> = cities
             .into_iter()
             .map(|city| {
                 let ascii = city.asciiname.to_lowercase();
@@ -45,11 +46,27 @@ impl SearchIndex {
             })
             .collect();
 
-        Self { entries, ambiguous }
+        let by_geonameid = entries
+            .iter()
+            .enumerate()
+            .map(|(at, entry)| (entry.city.geonameid, at))
+            .collect();
+
+        Self {
+            entries,
+            by_geonameid,
+            ambiguous,
+        }
     }
 
+    #[allow(dead_code)] // no caller yet; the UI looks cities up one at a time
     pub fn cities(&self) -> impl Iterator<Item = &City> {
         self.entries.iter().map(|entry| &entry.city)
+    }
+
+    pub fn city(&self, geonameid: u32) -> Option<&City> {
+        let at = *self.by_geonameid.get(&geonameid)?;
+        Some(&self.entries[at].city)
     }
 
     /// The best `limit` cities for `query`, best first. Matching is
@@ -255,6 +272,13 @@ mod tests {
         let index = index();
         let quito = index.search("quito", 1);
         assert_eq!(index.label(quito[0]), "Quito, Testland");
+    }
+
+    #[test]
+    fn cities_are_looked_up_by_geonameid() {
+        let index = index();
+        assert_eq!(index.city(7).map(|city| city.name.as_str()), Some("Quito"));
+        assert_eq!(index.city(404), None);
     }
 
     #[test]
