@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 gpui = "0.2.2"
 rand = "0.8"
+unicode-segmentation = "1"
