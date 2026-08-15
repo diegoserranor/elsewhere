@@ -2,10 +2,13 @@ use gpui::{
     App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
 };
 
-mod swapper;
+mod saver;
+mod vendor;
 
 fn main() {
     Application::new().run(|cx: &mut App| {
+        vendor::text_input::register_key_bindings(cx);
+
         let bounds = Bounds::centered(None, size(px(400.), px(300.)), cx);
         cx.open_window(
             WindowOptions {
@@ -16,25 +19,7 @@ fn main() {
                 }),
                 ..Default::default()
             },
-            |_window, cx| {
-                cx.new(|_| swapper::Swapper {
-                    swap_started: false,
-                    city_list: vec![
-                        "guayaquil".to_string(),
-                        "indianapolis".to_string(),
-                        "portland".to_string(),
-                        "barcelona".to_string(),
-                        "london".to_string(),
-                        "hamburg".to_string(),
-                        "seoul".to_string(),
-                        "sidney".to_string(),
-                        "hyderabad".to_string(),
-                        "abuja".to_string(),
-                        "tokyo".to_string(),
-                    ],
-                    city_index: 0,
-                })
-            },
+            |window, cx| cx.new(|cx| saver::Saver::new(window, cx)),
         )
         .expect("failed to open window");
         cx.activate(true);

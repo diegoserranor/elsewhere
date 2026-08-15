@@ -1427,6 +1427,7 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "rand 0.8.6",
+ "unicode-segmentation",
 ]
 
 [[package]]
