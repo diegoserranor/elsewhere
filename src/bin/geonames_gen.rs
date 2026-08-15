@@ -1,5 +1,5 @@
 //! Parses the GeoNames dumps in data/raw/, filters them down to places worth
-//! putting on a clock, and reports stats. Emitting the dataset comes later.
+//! putting on a clock, writes data/cities.tsv and reports stats.
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -12,6 +12,7 @@ use std::str::FromStr;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 const RAW_DIR: &str = "data/raw";
+const OUT_PATH: &str = "data/cities.tsv";
 const CITY_COLUMNS: usize = 19;
 const COUNTRY_COLUMNS: usize = 19;
 const ADMIN1_COLUMNS: usize = 4;
@@ -25,6 +26,9 @@ const KEPT_FEATURE_CODES: &[&str] = &[
 
 /// How many offending rows an error message names before it gives up.
 const MAX_REPORTED_ROWS: usize = 5;
+
+/// The one comment line data/cities.tsv opens with, naming its columns.
+const OUT_HEADER: &str = "#geonameid\tname\tasciiname\tcountry\tadmin1\tpopulation\ttimezone";
 
 /// The columns of cities5000.txt we keep; the rest are dropped on parse.
 #[allow(dead_code)] // most fields are only read once the dataset is emitted
@@ -40,6 +44,18 @@ struct RawCity {
     feature_code: String,
     country_code: String,
     admin1_code: String,
+    population: u64,
+    timezone: String,
+}
+
+/// A row of data/cities.tsv: codes resolved to names, ready to be written out.
+#[derive(Debug)]
+struct Row {
+    geonameid: u32,
+    name: String,
+    asciiname: String,
+    country: String,
+    admin1: String,
     population: u64,
     timezone: String,
 }
@@ -66,21 +82,14 @@ fn run() -> Result<()> {
 
     let timezones = validate_timezones(&cities)?;
 
-    let mut empty_admin1 = 0;
-    let mut unknown_countries: HashSet<&str> = HashSet::new();
-    for city in &cities {
-        if city.admin1_code.is_empty() {
-            empty_admin1 += 1;
-        }
-        if !countries.contains_key(city.country_code.as_str()) {
-            unknown_countries.insert(&city.country_code);
-        }
-    }
+    let rows = resolve(cities, &countries, &admin1)?;
+    let empty_admin1 = rows.iter().filter(|row| row.admin1.is_empty()).count();
+    fs::write(OUT_PATH, render(&rows))?;
 
     println!("parsed rows        {parsed}");
     println!("dropped by feature {}", parsed - filtered);
-    println!("collapsed by dedup {}", filtered - cities.len());
-    println!("kept rows          {}", cities.len());
+    println!("collapsed by dedup {}", filtered - rows.len());
+    println!("kept rows          {}", rows.len());
     println!("\ndropped per feature code:");
     for (code, count) in dropped {
         println!("  {code:<6} {count:>5}");
@@ -90,10 +99,74 @@ fn run() -> Result<()> {
     println!("  admin1    {}", admin1.len());
     println!("\nkept rows span:");
     println!("  timezones (validated against jiff) {timezones}");
-    println!("  empty admin1 codes    {empty_admin1}");
-    println!("  unknown country codes {}", unknown_countries.len());
+    println!("  rows without an admin1 name        {empty_admin1}");
+    println!("\nemitted {} rows to {OUT_PATH}", rows.len());
 
     Ok(())
+}
+
+/// Turns kept rows into emittable ones: country codes become country names,
+/// "CC.ADM1" becomes an admin1 name, and an asciiname that merely repeats name
+/// is blanked (the loader falls back to name). An admin1 code the dump does not
+/// explain becomes an empty string, since plenty of places have no useful
+/// subdivision; an unknown country code is a bug in the dumps and fails the run.
+fn resolve(
+    cities: Vec<RawCity>,
+    countries: &HashMap<String, String>,
+    admin1: &HashMap<String, String>,
+) -> Result<Vec<Row>> {
+    let mut unknown_countries: HashSet<&str> = HashSet::new();
+    for city in &cities {
+        if !countries.contains_key(&city.country_code) {
+            unknown_countries.insert(&city.country_code);
+        }
+    }
+    if !unknown_countries.is_empty() {
+        let mut names: Vec<&str> = unknown_countries.into_iter().collect();
+        names.sort_unstable();
+        return Err(format!("unknown country codes: {}", names.join(", ")).into());
+    }
+
+    Ok(cities
+        .into_iter()
+        .map(|city| Row {
+            geonameid: city.geonameid,
+            country: countries[&city.country_code].clone(),
+            admin1: admin1
+                .get(&format!("{}.{}", city.country_code, city.admin1_code))
+                .cloned()
+                .unwrap_or_default(),
+            asciiname: if city.asciiname == city.name {
+                String::new()
+            } else {
+                city.asciiname
+            },
+            name: city.name,
+            population: city.population,
+            timezone: city.timezone,
+        })
+        .collect())
+}
+
+/// The whole file: a header comment, then one tab-separated row per city.
+/// Nothing needs escaping, every value came out of a tab-separated dump.
+fn render(rows: &[Row]) -> String {
+    let mut out = String::from(OUT_HEADER);
+    for row in rows {
+        out.push('\n');
+        out.push_str(&format!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            row.geonameid,
+            row.name,
+            row.asciiname,
+            row.country,
+            row.admin1,
+            row.population,
+            row.timezone
+        ));
+    }
+    out.push('\n');
+    out
 }
 
 /// Checks every kept row against the tzdb jiff reads, returning how many
@@ -304,6 +377,7 @@ mod tests {
 # comment line
 #ISO\tISO3\tISO-Numeric\tfips\tCountry\tCapital\tArea(in sq km)\tPopulation\tContinent\ttld\tCurrencyCode\tCurrencyName\tPhone\tPostal Code Format\tPostal Code Regex\tLanguages\tgeonameid\tneighbours\tEquivalentFipsCode
 AD\tAND\t020\tAN\tAndorra\tAndorra la Vella\t468\t77006\tEU\t.ad\tEUR\tEuro\t376\tAD###\t^(?:AD)*(\\d{3})$\tca\t3041565\tES,FR\t
+AW\tABW\t533\tAA\tAruba\tOranjestad\t193\t106766\tNA\t.aw\tAWG\tGuilder\t297\t\t\tnl-AW,pap,es,en\t3577279\t\t
 JP\tJPN\t392\tJA\tJapan\tTokyo\t377835\t126529100\tAS\t.jp\tJPY\tYen\t81\t###-####\t^\\d{3}-\\d{4}$\tja\t1861060\t\t";
 
     const ADMIN1: &str = "\
@@ -363,7 +437,7 @@ JP.40\tTokyo\tTokyo\t1850144";
     #[test]
     fn parses_countries_skipping_comments() {
         let countries = parse_countries(COUNTRIES).unwrap();
-        assert_eq!(countries.len(), 2);
+        assert_eq!(countries.len(), 3);
         assert_eq!(countries["JP"], "Japan");
         assert_eq!(countries["AD"], "Andorra");
     }
@@ -490,6 +564,63 @@ JP.40\tTokyo\tTokyo\t1850144";
         let err = validate_timezones(&cities).unwrap_err().to_string();
         assert!(err.contains("1 rows have an empty timezone"), "{err}");
         assert!(err.contains("2 Nowhere"), "{err}");
+    }
+
+    fn lookups() -> (HashMap<String, String>, HashMap<String, String>) {
+        (
+            parse_countries(COUNTRIES).unwrap(),
+            parse_admin1(ADMIN1).unwrap(),
+        )
+    }
+
+    #[test]
+    fn resolves_codes_to_names() {
+        let (countries, admin1) = lookups();
+        let rows = resolve(parse_cities(CITIES).unwrap(), &countries, &admin1).unwrap();
+
+        assert_eq!(rows[0].country, "Japan");
+        assert_eq!(rows[0].admin1, "Tokyo");
+        assert_eq!(rows[1].name, "Sant Julià de Lòria");
+        assert_eq!(rows[1].asciiname, "Sant Julia de Loria");
+        assert_eq!(rows[1].admin1, "Sant Julià de Lòria");
+    }
+
+    #[test]
+    fn resolve_blanks_a_redundant_asciiname_and_a_missing_admin1() {
+        let (countries, admin1) = lookups();
+        let rows = resolve(parse_cities(CITIES).unwrap(), &countries, &admin1).unwrap();
+
+        assert_eq!(rows[0].name, "Tokyo");
+        assert!(rows[0].asciiname.is_empty());
+        // Aruba has no admin1 code at all, and none of its own in the table.
+        assert!(rows[2].admin1.is_empty());
+    }
+
+    #[test]
+    fn resolve_rejects_unknown_country_codes() {
+        let (countries, admin1) = lookups();
+        let cities = vec![city(1, "Olympus", "MA", "01", "PPL", 5000)];
+        let err = resolve(cities, &countries, &admin1)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown country codes: MA"), "{err}");
+    }
+
+    #[test]
+    fn renders_a_header_and_one_line_per_row() {
+        let (countries, admin1) = lookups();
+        let rows = resolve(parse_cities(CITIES).unwrap(), &countries, &admin1).unwrap();
+        let out = render(&rows);
+
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 4);
+        assert!(lines[0].starts_with('#'));
+        assert_eq!(
+            lines[1],
+            "1850147\tTokyo\t\tJapan\tTokyo\t9733276\tAsia/Tokyo"
+        );
+        assert_eq!(lines[3], "9179507\tMalmok\t\tAruba\t\t5637\tAmerica/Aruba");
+        assert!(out.ends_with('\n'));
     }
 
     #[test]
