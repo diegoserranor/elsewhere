@@ -1,6 +1,11 @@
-use gpui::{Context, Entity, Focusable, Window, div, prelude::*, rgb};
+use std::collections::HashMap;
+
+use gpui::{Context, Entity, Focusable, Task, Window, div, prelude::*, rgb};
+use jiff::Zoned;
+use jiff::tz::TimeZone;
 
 use crate::cities;
+use crate::clock;
 use crate::search::SearchIndex;
 use crate::vendor::text_input::TextInput;
 
@@ -17,6 +22,11 @@ pub struct Elsewhere {
     results: Vec<u32>,
     /// The geonameids picked so far, oldest first.
     saved: Vec<u32>,
+    /// The zones of the saved cities, resolved once each. A zone this machine's
+    /// tzdb does not know stays `None` rather than being retried every minute.
+    zones: HashMap<String, Option<TimeZone>>,
+    /// The clock, kept alive for as long as the window is.
+    _tick: Task<()>,
 }
 
 impl Elsewhere {
@@ -30,6 +40,8 @@ impl Elsewhere {
             query: String::new(),
             results: Vec::new(),
             saved: Vec::new(),
+            zones: HashMap::new(),
+            _tick: tick(cx),
         }
     }
 
@@ -53,6 +65,12 @@ impl Elsewhere {
     fn save(&mut self, geonameid: u32, cx: &mut Context<Self>) {
         if !self.saved.contains(&geonameid) {
             self.saved.push(geonameid);
+            if let Some(city) = self.index.city(geonameid)
+                && !self.zones.contains_key(&city.timezone)
+            {
+                let zone = TimeZone::get(&city.timezone).ok();
+                self.zones.insert(city.timezone.clone(), zone);
+            }
         }
         self.input.update(cx, |input, cx| input.reset(cx));
         self.query.clear();
@@ -66,8 +84,26 @@ impl Elsewhere {
     }
 }
 
+/// Re-renders on every minute boundary, so the shown times stay honest without
+/// waking the app up in between.
+fn tick(cx: &mut Context<Elsewhere>) -> Task<()> {
+    cx.spawn(async move |this, cx| {
+        loop {
+            cx.background_executor()
+                .timer(clock::until_next_minute(&Zoned::now()))
+                .await;
+            if this.update(cx, |_, cx| cx.notify()).is_err() {
+                // The window is gone.
+                break;
+            }
+        }
+    })
+}
+
 impl Render for Elsewhere {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // One reading of the clock for the whole pass, so the rows agree.
+        let now = Zoned::now();
         div()
             .size_full()
             .flex()
@@ -102,6 +138,15 @@ impl Render for Elsewhere {
                     .enumerate()
                     .filter_map(|(index, geonameid)| {
                         let city = self.index.city(*geonameid)?;
+                        let reading = self
+                            .zones
+                            .get(&city.timezone)
+                            .and_then(|zone| zone.as_ref())
+                            .map(|zone| clock::reading(&now, zone));
+                        let (time, day) = match reading {
+                            Some(reading) => (reading.time, reading.day),
+                            None => (clock::UNKNOWN.to_string(), None),
+                        };
                         Some(
                             div()
                                 .flex()
@@ -114,6 +159,10 @@ impl Render for Elsewhere {
                                         .text_color(rgb(0xa6adc8))
                                         .child(self.index.label(city)),
                                 )
+                                .children(day.map(|day| {
+                                    div().text_xs().text_color(rgb(0x6c7086)).child(day)
+                                }))
+                                .child(div().child(time))
                                 .child(
                                     div()
                                         .id(("delete", index))
