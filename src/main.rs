@@ -2,6 +2,7 @@ use gpui::{
     App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
 };
 
+mod cities;
 mod saver;
 mod vendor;
 
