@@ -26,6 +26,11 @@ impl Saver {
         self.input.update(cx, |input, cx| input.reset(cx));
         cx.notify();
     }
+
+    fn delete(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.saved.remove(index);
+        cx.notify();
+    }
 }
 
 impl Render for Saver {
@@ -60,11 +65,29 @@ impl Render for Saver {
                             .child("Save"),
                     ),
             )
-            .children(
-                self.saved
-                    .iter()
-                    .rev()
-                    .map(|text| div().text_color(rgb(0xa6adc8)).child(text.clone())),
-            )
+            .children(self.saved.iter().enumerate().rev().map(|(index, text)| {
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap_2()
+                    .items_center()
+                    .child(div().flex_1().text_color(rgb(0xa6adc8)).child(text.clone()))
+                    .child(
+                        div()
+                            .id(("delete", index))
+                            .px_2()
+                            .rounded_md()
+                            .text_color(rgb(0xf38ba8))
+                            .cursor_pointer()
+                            .hover(|style| style.bg(rgb(0x313244)))
+                            .active(|style| style.opacity(0.8))
+                            .on_click(
+                                cx.listener(move |this, _event, _window, cx| {
+                                    this.delete(index, cx)
+                                }),
+                            )
+                            .child("x"),
+                    )
+            }))
     }
 }
