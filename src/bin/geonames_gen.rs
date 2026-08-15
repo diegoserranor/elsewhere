@@ -1,6 +1,7 @@
-//! Parses the GeoNames dumps in data/raw/ and reports stats about them.
-//! Filtering and emitting the stripped dataset comes later.
+//! Parses the GeoNames dumps in data/raw/, filters them down to places worth
+//! putting on a clock, and reports stats. Emitting the dataset comes later.
 
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::Display;
@@ -14,6 +15,13 @@ const RAW_DIR: &str = "data/raw";
 const CITY_COLUMNS: usize = 19;
 const COUNTRY_COLUMNS: usize = 19;
 const ADMIN1_COLUMNS: usize = 4;
+
+/// Feature codes worth keeping: real, currently populated places. Everything
+/// else is dropped, notably PPLX (sections of a city), PPLH (historical),
+/// PPLQ (abandoned), PPLW (destroyed), PPLR, PPLCH and STLMT.
+const KEPT_FEATURE_CODES: &[&str] = &[
+    "PPL", "PPLA", "PPLA2", "PPLA3", "PPLA4", "PPLA5", "PPLC", "PPLF", "PPLG", "PPLL", "PPLS",
+];
 
 /// The columns of cities5000.txt we keep; the rest are dropped on parse.
 #[allow(dead_code)] // most fields are only read once the dataset is emitted
@@ -47,12 +55,16 @@ fn run() -> Result<()> {
     let countries = parse_countries(&read(&raw.join("countryInfo.txt"))?)?;
     let admin1 = parse_admin1(&read(&raw.join("admin1CodesASCII.txt"))?)?;
 
-    let mut per_feature: HashMap<&str, usize> = HashMap::new();
+    let parsed = cities.len();
+    let dropped = dropped_per_feature(&cities);
+    let cities = keep_by_feature(cities);
+    let filtered = cities.len();
+    let cities = dedup(cities);
+
     let mut timezones: HashSet<&str> = HashSet::new();
     let mut empty_admin1 = 0;
     let mut unknown_countries: HashSet<&str> = HashSet::new();
     for city in &cities {
-        *per_feature.entry(&city.feature_code).or_default() += 1;
         timezones.insert(&city.timezone);
         if city.admin1_code.is_empty() {
             empty_admin1 += 1;
@@ -62,21 +74,83 @@ fn run() -> Result<()> {
         }
     }
 
-    let mut per_feature: Vec<_> = per_feature.into_iter().collect();
-    per_feature.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
-
-    println!("rows                  {}", cities.len());
-    println!("countries             {}", countries.len());
-    println!("admin1 codes          {}", admin1.len());
-    println!("distinct timezones    {}", timezones.len());
-    println!("empty admin1 codes    {empty_admin1}");
-    println!("unknown country codes {}", unknown_countries.len());
-    println!("\nrows per feature code:");
-    for (code, count) in per_feature {
-        println!("  {code:<6} {count:>6}");
+    println!("parsed rows        {parsed}");
+    println!("dropped by feature {}", parsed - filtered);
+    println!("collapsed by dedup {}", filtered - cities.len());
+    println!("kept rows          {}", cities.len());
+    println!("\ndropped per feature code:");
+    for (code, count) in dropped {
+        println!("  {code:<6} {count:>5}");
     }
+    println!("\nlookup tables:");
+    println!("  countries {}", countries.len());
+    println!("  admin1    {}", admin1.len());
+    println!("\nkept rows span:");
+    println!("  timezones             {}", timezones.len());
+    println!("  empty admin1 codes    {empty_admin1}");
+    println!("  unknown country codes {}", unknown_countries.len());
 
     Ok(())
+}
+
+/// Rows whose feature code is not in the allowlist, most common first.
+fn dropped_per_feature(cities: &[RawCity]) -> Vec<(String, usize)> {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for city in cities {
+        if !is_kept(&city.feature_code) {
+            *counts.entry(&city.feature_code).or_default() += 1;
+        }
+    }
+    let mut counts: Vec<_> = counts
+        .into_iter()
+        .map(|(code, count)| (code.to_string(), count))
+        .collect();
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    counts
+}
+
+fn is_kept(feature_code: &str) -> bool {
+    KEPT_FEATURE_CODES.contains(&feature_code)
+}
+
+fn keep_by_feature(cities: Vec<RawCity>) -> Vec<RawCity> {
+    cities
+        .into_iter()
+        .filter(|city| is_kept(&city.feature_code))
+        .collect()
+}
+
+/// Collapses rows sharing a (name, country, admin1) key, keeping the most
+/// populous one; ties go to the lower geonameid. Output is sorted by
+/// geonameid so a run is reproducible.
+fn dedup(cities: Vec<RawCity>) -> Vec<RawCity> {
+    let mut best: HashMap<(String, String, String), RawCity> = HashMap::new();
+    for city in cities {
+        let key = (
+            city.name.clone(),
+            city.country_code.clone(),
+            city.admin1_code.clone(),
+        );
+        match best.entry(key) {
+            Entry::Occupied(mut kept) => {
+                if beats(&city, kept.get()) {
+                    kept.insert(city);
+                }
+            }
+            Entry::Vacant(slot) => {
+                slot.insert(city);
+            }
+        }
+    }
+
+    let mut cities: Vec<RawCity> = best.into_values().collect();
+    cities.sort_by_key(|city| city.geonameid);
+    cities
+}
+
+fn beats(city: &RawCity, kept: &RawCity) -> bool {
+    city.population > kept.population
+        || (city.population == kept.population && city.geonameid < kept.geonameid)
 }
 
 fn read(path: &Path) -> Result<String> {
@@ -245,5 +319,102 @@ JP.40\tTokyo\tTokyo\t1850144";
         let admin1 = parse_admin1(ADMIN1).unwrap();
         assert_eq!(admin1["AD.06"], "Sant Julià de Lòria");
         assert_eq!(admin1["JP.40"], "Tokyo");
+    }
+
+    fn city(
+        geonameid: u32,
+        name: &str,
+        country_code: &str,
+        admin1_code: &str,
+        feature_code: &str,
+        population: u64,
+    ) -> RawCity {
+        RawCity {
+            geonameid,
+            name: name.to_string(),
+            asciiname: name.to_string(),
+            alternatenames: Vec::new(),
+            latitude: 0.0,
+            longitude: 0.0,
+            feature_class: 'P',
+            feature_code: feature_code.to_string(),
+            country_code: country_code.to_string(),
+            admin1_code: admin1_code.to_string(),
+            population,
+            timezone: "UTC".to_string(),
+        }
+    }
+
+    fn ids(cities: &[RawCity]) -> Vec<u32> {
+        cities.iter().map(|city| city.geonameid).collect()
+    }
+
+    #[test]
+    fn keeps_only_allowlisted_feature_codes() {
+        let cities = vec![
+            city(1, "London", "GB", "ENG", "PPLC", 8961989),
+            city(2, "Camden Town", "GB", "ENG", "PPLX", 50000),
+            city(3, "Ruins", "GB", "ENG", "PPLQ", 0),
+            city(4, "Farm", "GB", "ENG", "PPLF", 5000),
+            city(5, "Old Town", "GB", "ENG", "PPLH", 0),
+            city(6, "Camp", "GB", "ENG", "STLMT", 5000),
+        ];
+        assert_eq!(ids(&keep_by_feature(cities)), [1, 4]);
+    }
+
+    #[test]
+    fn counts_dropped_feature_codes() {
+        let cities = vec![
+            city(1, "A", "GB", "ENG", "PPL", 5000),
+            city(2, "B", "GB", "ENG", "PPLX", 5000),
+            city(3, "C", "GB", "ENG", "PPLX", 5000),
+            city(4, "D", "GB", "ENG", "PPLH", 5000),
+        ];
+        assert_eq!(
+            dropped_per_feature(&cities),
+            [("PPLX".to_string(), 2), ("PPLH".to_string(), 1)]
+        );
+    }
+
+    #[test]
+    fn dedup_keeps_the_most_populous_row() {
+        let cities = vec![
+            city(10, "Springfield", "US", "IL", "PPL", 1000),
+            city(20, "Springfield", "US", "IL", "PPLA2", 116250),
+            city(30, "Springfield", "US", "IL", "PPL", 500),
+        ];
+        assert_eq!(ids(&dedup(cities)), [20]);
+    }
+
+    #[test]
+    fn dedup_is_deterministic() {
+        let rows = || {
+            vec![
+                city(30, "Twin", "US", "IL", "PPL", 5000),
+                city(10, "Twin", "US", "IL", "PPL", 5000),
+                city(20, "Twin", "US", "IL", "PPL", 5000),
+            ]
+        };
+        let mut reversed = rows();
+        reversed.reverse();
+
+        // Equal populations tie-break on the lower geonameid, whatever the order.
+        assert_eq!(ids(&dedup(rows())), [10]);
+        assert_eq!(ids(&dedup(reversed)), [10]);
+    }
+
+    #[test]
+    fn dedup_keeps_distinct_places_with_the_same_name() {
+        let cities = vec![
+            city(4726206, "San Antonio", "US", "TX", "PPLA2", 1526656),
+            city(4568074, "San Antonio", "PR", "051", "PPL", 6456),
+            city(3872395, "San Antonio", "CL", "01", "PPL", 87675),
+            city(3670107, "San Antonio", "CO", "38", "PPL", 8476),
+            city(3670162, "San Antonio", "CO", "28", "PPLA2", 5185),
+        ];
+        assert_eq!(
+            ids(&dedup(cities)),
+            [3670107, 3670162, 3872395, 4568074, 4726206]
+        );
     }
 }
