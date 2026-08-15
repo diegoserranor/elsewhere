@@ -2,8 +2,8 @@ use gpui::{
     App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
 };
 
+mod app;
 mod cities;
-mod saver;
 mod search;
 mod vendor;
 
@@ -21,7 +21,7 @@ fn main() {
                 }),
                 ..Default::default()
             },
-            |window, cx| cx.new(|cx| saver::Saver::new(window, cx)),
+            |window, cx| cx.new(|cx| app::Elsewhere::new(window, cx)),
         )
         .expect("failed to open window");
         cx.activate(true);
