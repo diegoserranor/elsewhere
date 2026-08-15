@@ -1,0 +1,20 @@
+# Snapshot of GeoNames source data used to generate the committed dataset.
+# Regenerate with scripts/fetch-geonames.sh, then update the hashes below.
+
+[[file]]
+name = "cities5000.txt"
+url = "https://download.geonames.org/export/dump/cities5000.zip"
+retrieved = 2026-08-15
+sha256 = "76faab072a421686944f40dec922f17a8786002591467e7a73dec5445f51b7a7"
+
+[[file]]
+name = "countryInfo.txt"
+url = "https://download.geonames.org/export/dump/countryInfo.txt"
+retrieved = 2026-08-15
+sha256 = "93bafc525813f22e4711ff9ed6d626343094ce48c26388dc7c49189b3d7d5512"
+
+[[file]]
+name = "admin1CodesASCII.txt"
+url = "https://download.geonames.org/export/dump/admin1CodesASCII.txt"
+retrieved = 2026-08-15
+sha256 = "590651498043f674accda2b7f46d21286cda0e290b02f8561c5005eee9a5448c"
