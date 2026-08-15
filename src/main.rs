@@ -4,6 +4,7 @@ use gpui::{
 
 mod cities;
 mod saver;
+mod search;
 mod vendor;
 
 fn main() {
