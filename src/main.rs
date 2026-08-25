@@ -5,6 +5,7 @@ use gpui::{
 mod app;
 mod cities;
 mod clock;
+mod saved;
 mod search;
 mod vendor;
 
