@@ -118,6 +118,14 @@ pub fn reorder(saved: &mut Vec<u32>, dragged: u32, before: Option<u32>) -> bool 
     true
 }
 
+/// The given cities, westmost first. The sort is stable, so cities sharing a
+/// longitude keep the order they came in; a longitude that is somehow not a
+/// number sorts as equal rather than panicking.
+pub fn westward(mut cities: Vec<(u32, f64)>) -> Vec<u32> {
+    cities.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    cities.into_iter().map(|(geonameid, _)| geonameid).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +197,22 @@ mod tests {
         assert!(!reorder(&mut saved, 2, Some(3)));
         assert!(!reorder(&mut saved, 3, None));
         assert_eq!(saved, [1, 2, 3]);
+    }
+
+    #[test]
+    fn orders_cities_west_to_east() {
+        let cities = vec![
+            (1850147, 139.69171),
+            (5128581, -74.006),
+            (2643743, -0.12574),
+        ];
+        assert_eq!(westward(cities), [5128581, 2643743, 1850147]);
+    }
+
+    #[test]
+    fn equal_longitudes_keep_their_given_order() {
+        let cities = vec![(3, 10.0), (1, 10.0), (2, 10.0)];
+        assert_eq!(westward(cities), [3, 1, 2]);
     }
 
     #[test]
