@@ -3,9 +3,9 @@
 //! a malformed line means the committed file is broken and panics in dev.
 
 const DATA: &str = include_str!("../data/cities.tsv");
-const COLUMNS: usize = 7;
+const COLUMNS: usize = 8;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct City {
     pub geonameid: u32,
     /// The local name, e.g. "Sant Julià de Lòria".
@@ -18,6 +18,8 @@ pub struct City {
     pub admin1: String,
     pub population: u64,
     pub timezone: String,
+    /// Degrees east of Greenwich, negative west.
+    pub longitude: f64,
 }
 
 pub fn load() -> Vec<City> {
@@ -50,6 +52,7 @@ fn parse(line: &str, lineno: usize) -> City {
         admin1: cols[4].to_string(),
         population: field(cols[5], lineno, "population"),
         timezone: cols[6].to_string(),
+        longitude: field(cols[7], lineno, "longitude"),
     }
 }
 
@@ -66,7 +69,7 @@ mod tests {
     #[test]
     fn parses_a_row() {
         let city = parse(
-            "3039163\tSant Julià de Lòria\tSant Julia de Loria\tAndorra\tSant Julià de Lòria\t8022\tEurope/Andorra",
+            "3039163\tSant Julià de Lòria\tSant Julia de Loria\tAndorra\tSant Julià de Lòria\t8022\tEurope/Andorra\t1.49129",
             1,
         );
         assert_eq!(
@@ -79,26 +82,33 @@ mod tests {
                 admin1: "Sant Julià de Lòria".to_string(),
                 population: 8022,
                 timezone: "Europe/Andorra".to_string(),
+                longitude: 1.49129,
             }
         );
     }
 
     #[test]
     fn an_empty_asciiname_falls_back_to_the_name() {
-        let city = parse("1850147\t東京\t\tJapan\tTokyo\t9733276\tAsia/Tokyo", 1);
+        let city = parse(
+            "1850147\t東京\t\tJapan\tTokyo\t9733276\tAsia/Tokyo\t139.69171",
+            1,
+        );
         assert_eq!(city.name, "東京");
         assert_eq!(city.asciiname, "東京");
     }
 
     #[test]
     fn an_empty_admin1_stays_empty() {
-        let city = parse("9179507\tMalmok\t\tAruba\t\t5637\tAmerica/Aruba", 1);
+        let city = parse(
+            "9179507\tMalmok\t\tAruba\t\t5637\tAmerica/Aruba\t-70.05064",
+            1,
+        );
         assert!(city.admin1.is_empty());
         assert_eq!(city.country, "Aruba");
     }
 
     #[test]
-    #[should_panic(expected = "line 7: expected 7 columns, got 3")]
+    #[should_panic(expected = "line 7: expected 8 columns, got 3")]
     fn rejects_a_short_line() {
         parse("9179507\tMalmok\t", 7);
     }
@@ -106,7 +116,10 @@ mod tests {
     #[test]
     #[should_panic(expected = "line 7: bad population")]
     fn rejects_an_unparseable_number() {
-        parse("9179507\tMalmok\t\tAruba\t\tmany\tAmerica/Aruba", 7);
+        parse(
+            "9179507\tMalmok\t\tAruba\t\tmany\tAmerica/Aruba\t-70.05064",
+            7,
+        );
     }
 
     #[test]
@@ -121,5 +134,6 @@ mod tests {
         assert_eq!(london.name, "London");
         assert_eq!(london.country, "United Kingdom");
         assert_eq!(london.timezone, "Europe/London");
+        assert_eq!(london.longitude, -0.12574);
     }
 }
