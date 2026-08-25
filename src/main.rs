@@ -1,5 +1,6 @@
 use gpui::{
-    App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, prelude::*, px, size,
+    App, Application, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, prelude::*,
+    px, size,
 };
 
 mod app;
@@ -12,6 +13,10 @@ mod vendor;
 fn main() {
     Application::new().run(|cx: &mut App| {
         vendor::text_input::register_key_bindings(cx);
+        cx.bind_keys([
+            KeyBinding::new("enter", app::Commit, Some("PinEditor")),
+            KeyBinding::new("escape", app::Cancel, Some("PinEditor")),
+        ]);
 
         let bounds = Bounds::centered(None, size(px(400.), px(300.)), cx);
         cx.open_window(

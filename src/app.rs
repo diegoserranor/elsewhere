@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use gpui::{Context, Entity, Focusable, Task, Window, div, prelude::*, rgb};
+use gpui::{Context, Entity, Focusable, Task, Window, actions, div, prelude::*, px, rgb};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
 
@@ -12,6 +12,10 @@ use crate::vendor::text_input::TextInput;
 
 /// How many search results the picker offers at a time.
 const RESULTS: usize = 8;
+
+// Keys the pin editor answers to. The vendored input claims neither, so they
+// bubble up to the wrapper div carrying the "PinEditor" context.
+actions!(pin_editor, [Commit, Cancel]);
 
 pub struct Elsewhere {
     input: Entity<TextInput>,
@@ -31,6 +35,11 @@ pub struct Elsewhere {
     /// Whether the list is shown ordered by longitude rather than by hand. A
     /// view preference, deliberately not persisted.
     westward: bool,
+    /// The instant every row reads from while a what-if time is set, held in
+    /// home's zone. `None` means the rows follow the real clock.
+    pinned: Option<Zoned>,
+    /// The row whose time is being typed over, and the input doing it.
+    editing: Option<(u32, Entity<TextInput>)>,
     /// The clock, kept alive for as long as the window is.
     _tick: Task<()>,
 }
@@ -76,6 +85,8 @@ impl Elsewhere {
             zones,
             drag: None,
             westward: false,
+            pinned: None,
+            editing: None,
             _tick: tick(cx),
         }
     }
@@ -114,9 +125,63 @@ impl Elsewhere {
         cx.notify();
     }
 
-    fn delete(&mut self, geonameid: u32, cx: &mut Context<Self>) {
+    fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
         self.saved.retain(|id| *id != geonameid);
         saved::save(&self.saved);
+        if self.editing.as_ref().is_some_and(|(id, _)| *id == geonameid) {
+            self.close_editor(window, cx);
+        }
+        cx.notify();
+    }
+
+    /// Opens the what-if editor on a row's time. The current reading rides
+    /// along as the placeholder, since the input cannot be prefilled.
+    fn edit(&mut self, geonameid: u32, current: String, window: &mut Window, cx: &mut Context<Self>) {
+        let input = cx.new(|cx| TextInput::new(current, cx));
+        window.focus(&input.focus_handle(cx));
+        cx.observe(&input, Self::retime).detach();
+        self.editing = Some((geonameid, input));
+        cx.notify();
+    }
+
+    /// Re-pins on every keystroke in the editor that reads as a time, so the
+    /// other rows follow along while the user types.
+    fn retime(&mut self, input: Entity<TextInput>, cx: &mut Context<Self>) {
+        let Some((geonameid, editor)) = &self.editing else {
+            return;
+        };
+        if *editor != input {
+            return;
+        }
+        if let Some(city) = self.index.city(*geonameid)
+            && let Some(Some(zone)) = self.zones.get(&city.timezone)
+            && let Some(pinned) = clock::pin(input.read(cx).text(), zone, &Zoned::now())
+        {
+            self.pinned = Some(pinned);
+            cx.notify();
+        }
+    }
+
+    /// Enter: the pin, if any, stays; the editor goes.
+    fn commit(&mut self, _: &Commit, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_editor(window, cx);
+    }
+
+    /// Escape: back to the live clock.
+    fn cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
+        self.pinned = None;
+        self.close_editor(window, cx);
+    }
+
+    fn unpin(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pinned = None;
+        self.close_editor(window, cx);
+    }
+
+    /// Drops the editor and hands focus back to the search input.
+    fn close_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.editing = None;
+        window.focus(&self.input.focus_handle(cx));
         cx.notify();
     }
 
@@ -174,8 +239,10 @@ impl Render for Elsewhere {
             self.drag = None;
         }
 
-        // One reading of the clock for the whole pass, so the rows agree.
-        let now = Zoned::now();
+        // One reading of the clock for the whole pass, so the rows agree. A
+        // pinned instant stands in for the clock wholesale, which is the whole
+        // feature: every row simply renders that moment instead of this one.
+        let now = self.pinned.clone().unwrap_or_else(Zoned::now);
         // The westward view is derived here and nowhere else: the stored order
         // stays the one the user arranged by hand.
         let order: Vec<u32> = if self.westward {
@@ -219,23 +286,44 @@ impl Render for Elsewhere {
                         .child(self.index.label(city)),
                 )
             }))
-            .children((self.saved.len() > 1).then(|| {
-                div().flex().flex_row().justify_end().child(
-                    div()
-                        .id("westward")
-                        .px_2()
-                        .text_xs()
-                        .rounded_md()
-                        .cursor_pointer()
-                        .text_color(if self.westward {
-                            rgb(0x89b4fa)
-                        } else {
-                            rgb(0x6c7086)
-                        })
-                        .hover(|style| style.bg(rgb(0x313244)))
-                        .on_click(cx.listener(|this, _event, _window, cx| this.toggle_westward(cx)))
-                        .child("west → east"),
-                )
+            .children((self.saved.len() > 1 || self.pinned.is_some()).then(|| {
+                div()
+                    .flex()
+                    .flex_row()
+                    .justify_end()
+                    .gap_2()
+                    .children(self.pinned.is_some().then(|| {
+                        div()
+                            .id("unpin")
+                            .px_2()
+                            .text_xs()
+                            .rounded_md()
+                            .cursor_pointer()
+                            .text_color(rgb(0xf9e2af))
+                            .hover(|style| style.bg(rgb(0x313244)))
+                            .on_click(
+                                cx.listener(|this, _event, window, cx| this.unpin(window, cx)),
+                            )
+                            .child("back to now")
+                    }))
+                    .children((self.saved.len() > 1).then(|| {
+                        div()
+                            .id("westward")
+                            .px_2()
+                            .text_xs()
+                            .rounded_md()
+                            .cursor_pointer()
+                            .text_color(if self.westward {
+                                rgb(0x89b4fa)
+                            } else {
+                                rgb(0x6c7086)
+                            })
+                            .hover(|style| style.bg(rgb(0x313244)))
+                            .on_click(
+                                cx.listener(|this, _event, _window, cx| this.toggle_westward(cx)),
+                            )
+                            .child("west → east")
+                    }))
             }))
             .children(order.into_iter().filter_map(|geonameid| {
                 let city = self.index.city(geonameid)?;
@@ -245,6 +333,8 @@ impl Render for Elsewhere {
                     .get(&city.timezone)
                     .and_then(|zone| zone.as_ref())
                     .map(|zone| clock::reading(&now, zone));
+                // Only a row whose zone resolved can anchor a pin.
+                let known = reading.is_some();
                 let (time, day) = match reading {
                     Some(reading) => (reading.time, reading.day),
                     None => (clock::UNKNOWN.to_string(), None),
@@ -304,7 +394,36 @@ impl Render for Elsewhere {
                         .children(
                             day.map(|day| div().text_xs().text_color(rgb(0x6c7086)).child(day)),
                         )
-                        .child(div().child(time))
+                        .child(match &self.editing {
+                            Some((editing, input)) if *editing == geonameid => div()
+                                // Enter and escape fall through the input and
+                                // land on this wrapper's context.
+                                .key_context("PinEditor")
+                                .on_action(cx.listener(Self::commit))
+                                .on_action(cx.listener(Self::cancel))
+                                .w(px(64.))
+                                .child(input.clone())
+                                .into_any_element(),
+                            _ => div()
+                                .id(("time", geonameid as usize))
+                                .px_1()
+                                .rounded_md()
+                                .when(self.pinned.is_some(), |cell| {
+                                    cell.text_color(rgb(0xf9e2af))
+                                })
+                                .when(known, |cell| {
+                                    cell.cursor_pointer()
+                                        .hover(|style| style.bg(rgb(0x313244)))
+                                        .on_click(cx.listener({
+                                            let time = time.clone();
+                                            move |this, _event, window, cx| {
+                                                this.edit(geonameid, time.clone(), window, cx)
+                                            }
+                                        }))
+                                })
+                                .child(time.clone())
+                                .into_any_element(),
+                        })
                         .child(
                             div()
                                 .id(("delete", geonameid as usize))
@@ -314,8 +433,8 @@ impl Render for Elsewhere {
                                 .cursor_pointer()
                                 .hover(|style| style.bg(rgb(0x313244)))
                                 .active(|style| style.opacity(0.8))
-                                .on_click(cx.listener(move |this, _event, _window, cx| {
-                                    this.delete(geonameid, cx)
+                                .on_click(cx.listener(move |this, _event, window, cx| {
+                                    this.delete(geonameid, window, cx)
                                 }))
                                 .child("x"),
                         ),

@@ -44,6 +44,23 @@ fn day(here: Date, there: Date) -> Option<String> {
     }
 }
 
+/// The instant at which `zone`'s wall clock reads `text` — "HH:MM", today over
+/// there — expressed in home's zone so day hints stay relative to home. `None`
+/// when the text does not read as such a time.
+pub fn pin(text: &str, zone: &TimeZone, now: &Zoned) -> Option<Zoned> {
+    let (hour, minute) = text.split_once(':')?;
+    let hour: i8 = hour.trim().parse().ok()?;
+    let minute: i8 = minute.trim().parse().ok()?;
+    if !(0..24).contains(&hour) || !(0..60).contains(&minute) {
+        return None;
+    }
+    let date = now.with_time_zone(zone.clone()).date();
+    // A time skipped or repeated by a DST change resolves to jiff's compatible
+    // choice rather than failing.
+    let there = date.at(hour, minute, 0, 0).to_zoned(zone.clone()).ok()?;
+    Some(there.with_time_zone(now.time_zone().clone()))
+}
+
 /// How long to wait before the displayed minute changes.
 pub fn until_next_minute(now: &Zoned) -> Duration {
     // A leap second reads as :60, which is still inside the minute.
@@ -134,6 +151,44 @@ mod tests {
     #[test]
     fn an_unknown_zone_does_not_resolve() {
         assert!(TimeZone::get("Mars/Olympus_Mons").is_err());
+    }
+
+    #[test]
+    fn pins_a_time_in_another_zone() {
+        // 12:00Z is 21:00 in Tokyo, so "today there" is still the 15th; 09:30
+        // that morning in Tokyo was 00:30Z.
+        let now = at("2026-08-15T12:00:00Z", "UTC");
+        let pinned = pin("09:30", &zone("Asia/Tokyo"), &now).expect("a valid pin");
+        assert_eq!(reading(&pinned, &zone("Asia/Tokyo")).time, "09:30");
+        assert_eq!(reading(&pinned, &zone("UTC")).time, "00:30");
+    }
+
+    #[test]
+    fn a_pin_keeps_home_as_the_day_reference() {
+        // Kiritimati is already on the 16th; pinning 09:00 there lands at
+        // 19:00Z on the 15th, so from home it reads as a day ahead.
+        let now = at("2026-08-15T12:00:00Z", "UTC");
+        let pinned = pin("09:00", &zone("Pacific/Kiritimati"), &now).expect("a valid pin");
+        let there = reading(&pinned, &zone("Pacific/Kiritimati"));
+        assert_eq!(there.time, "09:00");
+        assert_eq!(there.day.as_deref(), Some("+1 day"));
+    }
+
+    #[test]
+    fn a_time_skipped_by_dst_still_pins() {
+        // New York's clocks jump from 02:00 to 03:00 on 2026-03-08; 02:30
+        // resolves to the other side of the gap instead of failing.
+        let now = at("2026-03-08T12:00:00Z", "UTC");
+        let pinned = pin("02:30", &zone("America/New_York"), &now).expect("a valid pin");
+        assert_eq!(reading(&pinned, &zone("America/New_York")).time, "03:30");
+    }
+
+    #[test]
+    fn text_that_is_not_a_time_does_not_pin() {
+        let now = at("2026-08-15T12:00:00Z", "UTC");
+        for text in ["", "noon", "12", "25:00", "12:60", "-1:30", "1:2:3"] {
+            assert_eq!(pin(text, &zone("UTC"), &now), None, "{text:?}");
+        }
     }
 
     #[test]
