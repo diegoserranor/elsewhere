@@ -6,6 +6,7 @@ use jiff::tz::TimeZone;
 
 use crate::cities;
 use crate::clock;
+use crate::saved;
 use crate::search::SearchIndex;
 use crate::vendor::text_input::TextInput;
 
@@ -34,13 +35,20 @@ impl Elsewhere {
         let input = cx.new(|cx| TextInput::new("search for a city...", cx));
         window.focus(&input.focus_handle(cx));
         cx.observe(&input, Self::search).detach();
+
+        let index = SearchIndex::new(cities::load());
+        let mut saved = saved::load();
+        // A regenerated dataset may have dropped a city saved by an older run.
+        saved.retain(|id| index.city(*id).is_some());
+        let zones = zones_for(&index, &saved);
+
         Self {
             input,
-            index: SearchIndex::new(cities::load()),
+            index,
             query: String::new(),
             results: Vec::new(),
-            saved: Vec::new(),
-            zones: HashMap::new(),
+            saved,
+            zones,
             _tick: tick(cx),
         }
     }
@@ -71,6 +79,7 @@ impl Elsewhere {
                 let zone = TimeZone::get(&city.timezone).ok();
                 self.zones.insert(city.timezone.clone(), zone);
             }
+            saved::save(&self.saved);
         }
         self.input.update(cx, |input, cx| input.reset(cx));
         self.query.clear();
@@ -80,8 +89,23 @@ impl Elsewhere {
 
     fn delete(&mut self, geonameid: u32, cx: &mut Context<Self>) {
         self.saved.retain(|id| *id != geonameid);
+        saved::save(&self.saved);
         cx.notify();
     }
+}
+
+/// The zones of `saved`, resolved once each, so rows restored from disk show a
+/// time straight away.
+fn zones_for(index: &SearchIndex, saved: &[u32]) -> HashMap<String, Option<TimeZone>> {
+    let mut zones = HashMap::new();
+    for geonameid in saved {
+        if let Some(city) = index.city(*geonameid)
+            && !zones.contains_key(&city.timezone)
+        {
+            zones.insert(city.timezone.clone(), TimeZone::get(&city.timezone).ok());
+        }
+    }
+    zones
 }
 
 /// Re-renders on every minute boundary, so the shown times stay honest without
