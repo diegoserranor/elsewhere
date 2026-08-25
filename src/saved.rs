@@ -89,6 +89,35 @@ pub fn save(saved: &[u32]) {
     }
 }
 
+/// Moves `dragged` to sit just before `before`, or to the end when there is no
+/// row to sit before. Returns whether the order actually changed, so a drop
+/// that lands where the row already was costs nothing. An id the list does not
+/// hold, or a row dropped on itself, leaves it untouched.
+pub fn reorder(saved: &mut Vec<u32>, dragged: u32, before: Option<u32>) -> bool {
+    if before == Some(dragged) {
+        return false;
+    }
+    let Some(from) = saved.iter().position(|id| *id == dragged) else {
+        return false;
+    };
+    let mut reordered = saved.clone();
+    reordered.remove(from);
+    let to = match before {
+        Some(before) => match reordered.iter().position(|id| *id == before) {
+            Some(at) => at,
+            None => return false,
+        },
+        None => reordered.len(),
+    };
+    reordered.insert(to, dragged);
+
+    if reordered == *saved {
+        return false;
+    }
+    *saved = reordered;
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,5 +166,36 @@ mod tests {
     #[test]
     fn yields_no_dir_without_home_or_xdg() {
         assert_eq!(dir(None, None), None);
+    }
+
+    #[test]
+    fn moves_a_row_before_another() {
+        let mut saved = vec![1, 2, 3];
+        assert!(reorder(&mut saved, 3, Some(1)));
+        assert_eq!(saved, [3, 1, 2]);
+    }
+
+    #[test]
+    fn moves_a_row_to_the_end() {
+        let mut saved = vec![1, 2, 3];
+        assert!(reorder(&mut saved, 1, None));
+        assert_eq!(saved, [2, 3, 1]);
+    }
+
+    #[test]
+    fn dropping_a_row_where_it_already_sits_changes_nothing() {
+        let mut saved = vec![1, 2, 3];
+        assert!(!reorder(&mut saved, 2, Some(2)));
+        assert!(!reorder(&mut saved, 2, Some(3)));
+        assert!(!reorder(&mut saved, 3, None));
+        assert_eq!(saved, [1, 2, 3]);
+    }
+
+    #[test]
+    fn ignores_an_unknown_dragged_id() {
+        let mut saved = vec![1, 2, 3];
+        assert!(!reorder(&mut saved, 9, Some(1)));
+        assert!(!reorder(&mut saved, 1, Some(9)));
+        assert_eq!(saved, [1, 2, 3]);
     }
 }
