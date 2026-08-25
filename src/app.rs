@@ -78,8 +78,8 @@ impl Elsewhere {
         cx.notify();
     }
 
-    fn delete(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.saved.remove(index);
+    fn delete(&mut self, geonameid: u32, cx: &mut Context<Self>) {
+        self.saved.retain(|id| *id != geonameid);
         cx.notify();
     }
 }
@@ -132,53 +132,49 @@ impl Render for Elsewhere {
                         .child(self.index.label(city)),
                 )
             }))
-            .children(
-                self.saved
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, geonameid)| {
-                        let city = self.index.city(*geonameid)?;
-                        let reading = self
-                            .zones
-                            .get(&city.timezone)
-                            .and_then(|zone| zone.as_ref())
-                            .map(|zone| clock::reading(&now, zone));
-                        let (time, day) = match reading {
-                            Some(reading) => (reading.time, reading.day),
-                            None => (clock::UNKNOWN.to_string(), None),
-                        };
-                        Some(
+            .children(self.saved.iter().filter_map(|geonameid| {
+                let city = self.index.city(*geonameid)?;
+                let reading = self
+                    .zones
+                    .get(&city.timezone)
+                    .and_then(|zone| zone.as_ref())
+                    .map(|zone| clock::reading(&now, zone));
+                let (time, day) = match reading {
+                    Some(reading) => (reading.time, reading.day),
+                    None => (clock::UNKNOWN.to_string(), None),
+                };
+                Some(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .gap_2()
+                        .items_center()
+                        .child(
                             div()
-                                .flex()
-                                .flex_row()
-                                .gap_2()
-                                .items_center()
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .text_color(rgb(0xa6adc8))
-                                        .child(self.index.label(city)),
-                                )
-                                .children(day.map(|day| {
-                                    div().text_xs().text_color(rgb(0x6c7086)).child(day)
-                                }))
-                                .child(div().child(time))
-                                .child(
-                                    div()
-                                        .id(("delete", index))
-                                        .px_2()
-                                        .rounded_md()
-                                        .text_color(rgb(0xf38ba8))
-                                        .cursor_pointer()
-                                        .hover(|style| style.bg(rgb(0x313244)))
-                                        .active(|style| style.opacity(0.8))
-                                        .on_click(cx.listener(move |this, _event, _window, cx| {
-                                            this.delete(index, cx)
-                                        }))
-                                        .child("x"),
-                                ),
+                                .flex_1()
+                                .text_color(rgb(0xa6adc8))
+                                .child(self.index.label(city)),
                         )
-                    }),
-            )
+                        .children(
+                            day.map(|day| div().text_xs().text_color(rgb(0x6c7086)).child(day)),
+                        )
+                        .child(div().child(time))
+                        .child(
+                            div()
+                                .id(("delete", *geonameid as usize))
+                                .px_2()
+                                .rounded_md()
+                                .text_color(rgb(0xf38ba8))
+                                .cursor_pointer()
+                                .hover(|style| style.bg(rgb(0x313244)))
+                                .active(|style| style.opacity(0.8))
+                                .on_click(cx.listener({
+                                    let geonameid = *geonameid;
+                                    move |this, _event, _window, cx| this.delete(geonameid, cx)
+                                }))
+                                .child("x"),
+                        ),
+                )
+            }))
     }
 }
