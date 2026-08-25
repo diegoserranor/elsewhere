@@ -26,8 +26,30 @@ pub struct Elsewhere {
     /// The zones of the saved cities, resolved once each. A zone this machine's
     /// tzdb does not know stays `None` rather than being retried every minute.
     zones: HashMap<String, Option<TimeZone>>,
+    /// The geonameid a drag is carrying, while one is in flight.
+    drag: Option<u32>,
     /// The clock, kept alive for as long as the window is.
     _tick: Task<()>,
+}
+
+/// The row that follows the cursor during a drag.
+struct DragRow {
+    geonameid: u32,
+    label: String,
+}
+
+impl Render for DragRow {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .bg(rgb(0x181825))
+            .text_color(rgb(0xa6adc8))
+            .opacity(0.9)
+            .shadow_md()
+            .child(self.label.clone())
+    }
 }
 
 impl Elsewhere {
@@ -49,6 +71,7 @@ impl Elsewhere {
             results: Vec::new(),
             saved,
             zones,
+            drag: None,
             _tick: tick(cx),
         }
     }
@@ -92,6 +115,15 @@ impl Elsewhere {
         saved::save(&self.saved);
         cx.notify();
     }
+
+    /// Lands a dragged row before `before`, or at the end without one.
+    fn drop(&mut self, dragged: u32, before: Option<u32>, cx: &mut Context<Self>) {
+        self.drag = None;
+        if saved::reorder(&mut self.saved, dragged, before) {
+            saved::save(&self.saved);
+        }
+        cx.notify();
+    }
 }
 
 /// The zones of `saved`, resolved once each, so rows restored from disk show a
@@ -126,6 +158,13 @@ fn tick(cx: &mut Context<Elsewhere>) -> Task<()> {
 
 impl Render for Elsewhere {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // gpui refreshes the window once a drag ends, however it ended, so this
+        // is where a cancelled drag is forgotten.
+        let dragging = cx.has_active_drag();
+        if !dragging {
+            self.drag = None;
+        }
+
         // One reading of the clock for the whole pass, so the rows agree.
         let now = Zoned::now();
         div()
@@ -157,7 +196,9 @@ impl Render for Elsewhere {
                 )
             }))
             .children(self.saved.iter().filter_map(|geonameid| {
-                let city = self.index.city(*geonameid)?;
+                let geonameid = *geonameid;
+                let city = self.index.city(geonameid)?;
+                let label = self.index.label(city);
                 let reading = self
                     .zones
                     .get(&city.timezone)
@@ -167,38 +208,86 @@ impl Render for Elsewhere {
                     Some(reading) => (reading.time, reading.day),
                     None => (clock::UNKNOWN.to_string(), None),
                 };
+                let group = format!("saved-{geonameid}");
                 Some(
                     div()
+                        .group(group.clone())
                         .flex()
                         .flex_row()
                         .gap_2()
                         .items_center()
+                        // Always there, so an insertion line costs no layout.
+                        .border_t_2()
+                        .border_color(gpui::transparent_black())
+                        .drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(0x89b4fa)))
+                        .on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
+                            this.drop(row.geonameid, Some(geonameid), cx)
+                        }))
+                        .when(dragging && self.drag == Some(geonameid), |row| {
+                            row.opacity(0.4)
+                        })
                         .child(
                             div()
-                                .flex_1()
+                                .id(("grip", geonameid as usize))
+                                .cursor_grab()
                                 .text_color(rgb(0xa6adc8))
-                                .child(self.index.label(city)),
+                                .opacity(0.4)
+                                .group_hover(group, |style| style.opacity(1.))
+                                .on_drag(
+                                    DragRow {
+                                        geonameid,
+                                        label: label.clone(),
+                                    },
+                                    {
+                                        let this = cx.weak_entity();
+                                        move |row: &DragRow, _position, _window, cx| {
+                                            this.update(cx, |this, _cx| {
+                                                this.drag = Some(row.geonameid)
+                                            })
+                                            .ok();
+                                            cx.new(|_cx| DragRow {
+                                                geonameid: row.geonameid,
+                                                label: row.label.clone(),
+                                            })
+                                        }
+                                    },
+                                )
+                                .child("⠿"),
                         )
+                        .child(div().flex_1().text_color(rgb(0xa6adc8)).child(label))
                         .children(
                             day.map(|day| div().text_xs().text_color(rgb(0x6c7086)).child(day)),
                         )
                         .child(div().child(time))
                         .child(
                             div()
-                                .id(("delete", *geonameid as usize))
+                                .id(("delete", geonameid as usize))
                                 .px_2()
                                 .rounded_md()
                                 .text_color(rgb(0xf38ba8))
                                 .cursor_pointer()
                                 .hover(|style| style.bg(rgb(0x313244)))
                                 .active(|style| style.opacity(0.8))
-                                .on_click(cx.listener({
-                                    let geonameid = *geonameid;
-                                    move |this, _event, _window, cx| this.delete(geonameid, cx)
+                                .on_click(cx.listener(move |this, _event, _window, cx| {
+                                    this.delete(geonameid, cx)
                                 }))
                                 .child("x"),
                         ),
                 )
             }))
+            // The space below the list catches a drop meant for the end.
+            .when(dragging && self.drag.is_some(), |list| {
+                list.child(
+                    div()
+                        .flex_1()
+                        .min_h_4()
+                        .border_t_2()
+                        .border_color(gpui::transparent_black())
+                        .drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(0x89b4fa)))
+                        .on_drop(cx.listener(|this, row: &DragRow, _window, cx| {
+                            this.drop(row.geonameid, None, cx)
+                        })),
+                )
+            })
     }
 }
