@@ -28,6 +28,9 @@ pub struct Elsewhere {
     zones: HashMap<String, Option<TimeZone>>,
     /// The geonameid a drag is carrying, while one is in flight.
     drag: Option<u32>,
+    /// Whether the list is shown ordered by longitude rather than by hand. A
+    /// view preference, deliberately not persisted.
+    westward: bool,
     /// The clock, kept alive for as long as the window is.
     _tick: Task<()>,
 }
@@ -72,6 +75,7 @@ impl Elsewhere {
             saved,
             zones,
             drag: None,
+            westward: false,
             _tick: tick(cx),
         }
     }
@@ -113,6 +117,11 @@ impl Elsewhere {
     fn delete(&mut self, geonameid: u32, cx: &mut Context<Self>) {
         self.saved.retain(|id| *id != geonameid);
         saved::save(&self.saved);
+        cx.notify();
+    }
+
+    fn toggle_westward(&mut self, cx: &mut Context<Self>) {
+        self.westward = !self.westward;
         cx.notify();
     }
 
@@ -167,6 +176,21 @@ impl Render for Elsewhere {
 
         // One reading of the clock for the whole pass, so the rows agree.
         let now = Zoned::now();
+        // The westward view is derived here and nowhere else: the stored order
+        // stays the one the user arranged by hand.
+        let order: Vec<u32> = if self.westward {
+            saved::westward(
+                self.saved
+                    .iter()
+                    .filter_map(|geonameid| {
+                        let city = self.index.city(*geonameid)?;
+                        Some((*geonameid, city.longitude))
+                    })
+                    .collect(),
+            )
+        } else {
+            self.saved.clone()
+        };
         div()
             .size_full()
             .flex()
@@ -195,8 +219,25 @@ impl Render for Elsewhere {
                         .child(self.index.label(city)),
                 )
             }))
-            .children(self.saved.iter().filter_map(|geonameid| {
-                let geonameid = *geonameid;
+            .children((self.saved.len() > 1).then(|| {
+                div().flex().flex_row().justify_end().child(
+                    div()
+                        .id("westward")
+                        .px_2()
+                        .text_xs()
+                        .rounded_md()
+                        .cursor_pointer()
+                        .text_color(if self.westward {
+                            rgb(0x89b4fa)
+                        } else {
+                            rgb(0x6c7086)
+                        })
+                        .hover(|style| style.bg(rgb(0x313244)))
+                        .on_click(cx.listener(|this, _event, _window, cx| this.toggle_westward(cx)))
+                        .child("west → east"),
+                )
+            }))
+            .children(order.into_iter().filter_map(|geonameid| {
                 let city = self.index.city(geonameid)?;
                 let label = self.index.label(city);
                 let reading = self
@@ -216,17 +257,22 @@ impl Render for Elsewhere {
                         .flex_row()
                         .gap_2()
                         .items_center()
-                        // Always there, so an insertion line costs no layout.
-                        .border_t_2()
-                        .border_color(gpui::transparent_black())
-                        .drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(0x89b4fa)))
-                        .on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
-                            this.drop(row.geonameid, Some(geonameid), cx)
-                        }))
+                        .when(!self.westward, |row| {
+                            // The border is always there, so an insertion line
+                            // costs no layout.
+                            row.border_t_2()
+                                .border_color(gpui::transparent_black())
+                                .drag_over::<DragRow>(|style, _, _, _| {
+                                    style.border_color(rgb(0x89b4fa))
+                                })
+                                .on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
+                                    this.drop(row.geonameid, Some(geonameid), cx)
+                                }))
+                        })
                         .when(dragging && self.drag == Some(geonameid), |row| {
                             row.opacity(0.4)
                         })
-                        .child(
+                        .children((!self.westward).then(|| {
                             div()
                                 .id(("grip", geonameid as usize))
                                 .cursor_grab()
@@ -252,8 +298,8 @@ impl Render for Elsewhere {
                                         }
                                     },
                                 )
-                                .child("⠿"),
-                        )
+                                .child("⠿")
+                        }))
                         .child(div().flex_1().text_color(rgb(0xa6adc8)).child(label))
                         .children(
                             day.map(|day| div().text_xs().text_color(rgb(0x6c7086)).child(day)),
@@ -276,7 +322,7 @@ impl Render for Elsewhere {
                 )
             }))
             // The space below the list catches a drop meant for the end.
-            .when(dragging && self.drag.is_some(), |list| {
+            .when(!self.westward && dragging && self.drag.is_some(), |list| {
                 list.child(
                     div()
                         .flex_1()
