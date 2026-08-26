@@ -48,7 +48,7 @@ impl Elsewhere {
             return;
         }
         if let Some(city) = self.index.city(*geonameid)
-            && let Some(Some(zone)) = self.zones.get(&city.timezone)
+            && let Some(zone) = self.zones.get(&city.timezone)
             && let Some(pinned) = clock::pin(input.read(cx).text(), zone, &Zoned::now())
         {
             self.pinned = Some(pinned);
@@ -88,7 +88,6 @@ impl Elsewhere {
         let reading = self
             .zones
             .get(&city.timezone)
-            .and_then(|zone| zone.as_ref())
             .map(|zone| clock::reading(now, zone));
         // Only a row whose zone resolved can anchor a pin.
         let known = reading.is_some();

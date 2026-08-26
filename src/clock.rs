@@ -1,6 +1,7 @@
 //! Turning an instant into what a saved row shows: the local time somewhere
 //! else, and a hint when it is not the same day there as it is here.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use jiff::civil::Date;
@@ -68,6 +69,33 @@ pub fn until_next_minute(now: &Zoned) -> Duration {
     let nanosecond = now.subsec_nanosecond().max(0) as u32;
     // The nanoseconds carry into a whole second when there are none to drop.
     Duration::new(59 - second, 1_000_000_000 - nanosecond) + PAD
+}
+
+/// The zones looked up so far, each resolved against the tzdb once. A zone this
+/// machine's tzdb does not know stays `None` rather than being retried every
+/// minute.
+#[derive(Default)]
+pub struct Zones(HashMap<String, Option<TimeZone>>);
+
+impl Zones {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The zone, looked up in the tzdb on first sight and answered from the
+    /// cache after that — a failed lookup is remembered too.
+    pub fn resolve(&mut self, timezone: &str) -> Option<&TimeZone> {
+        if !self.0.contains_key(timezone) {
+            self.0
+                .insert(timezone.to_string(), TimeZone::get(timezone).ok());
+        }
+        self.get(timezone)
+    }
+
+    /// The zone, if a `resolve` has succeeded for it before.
+    pub fn get(&self, timezone: &str) -> Option<&TimeZone> {
+        self.0.get(timezone).and_then(|zone| zone.as_ref())
+    }
 }
 
 #[cfg(test)]

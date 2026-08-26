@@ -1,9 +1,7 @@
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui::{Context, Entity, Task, Window, actions, div, prelude::*, rgb};
 use jiff::Zoned;
-use jiff::tz::TimeZone;
 
 mod drag;
 mod row;
@@ -30,9 +28,8 @@ pub struct Elsewhere {
     index: Rc<SearchIndex>,
     /// The geonameids picked so far, oldest first.
     saved: Vec<u32>,
-    /// The zones of the saved cities, resolved once each. A zone this machine's
-    /// tzdb does not know stays `None` rather than being retried every minute.
-    zones: HashMap<String, Option<TimeZone>>,
+    /// The zones of the saved cities.
+    zones: clock::Zones,
     /// The geonameid a drag is carrying, while one is in flight.
     drag: Option<u32>,
     /// Whether the list is shown ordered by longitude rather than by hand. A
@@ -56,7 +53,13 @@ impl Elsewhere {
         let mut saved = saved::load();
         // A regenerated dataset may have dropped a city saved by an older run.
         saved.retain(|id| index.city(*id).is_some());
-        let zones = zones_for(&index, &saved);
+        // Resolved up front, so rows restored from disk show a time straight away.
+        let mut zones = clock::Zones::new();
+        for geonameid in &saved {
+            if let Some(city) = index.city(*geonameid) {
+                zones.resolve(&city.timezone);
+            }
+        }
 
         Self {
             picker,
@@ -84,30 +87,13 @@ impl Elsewhere {
     fn save(&mut self, geonameid: u32, cx: &mut Context<Self>) {
         if !self.saved.contains(&geonameid) {
             self.saved.push(geonameid);
-            if let Some(city) = self.index.city(geonameid)
-                && !self.zones.contains_key(&city.timezone)
-            {
-                let zone = TimeZone::get(&city.timezone).ok();
-                self.zones.insert(city.timezone.clone(), zone);
+            if let Some(city) = self.index.city(geonameid) {
+                self.zones.resolve(&city.timezone);
             }
             saved::save(&self.saved);
         }
         cx.notify();
     }
-}
-
-/// The zones of `saved`, resolved once each, so rows restored from disk show a
-/// time straight away.
-fn zones_for(index: &SearchIndex, saved: &[u32]) -> HashMap<String, Option<TimeZone>> {
-    let mut zones = HashMap::new();
-    for geonameid in saved {
-        if let Some(city) = index.city(*geonameid)
-            && !zones.contains_key(&city.timezone)
-        {
-            zones.insert(city.timezone.clone(), TimeZone::get(&city.timezone).ok());
-        }
-    }
-    zones
 }
 
 /// Re-renders on every minute boundary, so the shown times stay honest without
