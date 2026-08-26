@@ -1,18 +1,57 @@
-use gpui::{Context, Entity, MouseDownEvent, Window, deferred, div, prelude::*, px, rgb};
+use std::rc::Rc;
 
-use super::Elsewhere;
+use gpui::{
+    App, Context, Entity, EventEmitter, FocusHandle, Focusable, MouseDownEvent, ScrollHandle,
+    Window, deferred, div, prelude::*, px, rgb,
+};
+
 use super::scrollbar::scrollbar;
+use crate::search::SearchIndex;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
 
 /// How many search results the picker offers at a time.
 pub(super) const RESULTS: usize = 8;
 
-impl Elsewhere {
+pub(super) struct SearchPicker {
+    input: Entity<TextInput>,
+    index: Rc<SearchIndex>,
+    /// The last text seen in the input, to spot the keystrokes among the
+    /// input's other notifications.
+    query: String,
+    /// The geonameids currently offered, best first.
+    results: Vec<u32>,
+    /// Where the results panel has scrolled to. Doubles as the panel's on-screen
+    /// bounds, which the dismiss guard and the scrollbar both read.
+    scroll: ScrollHandle,
+}
+
+pub(super) enum SearchEvent {
+    /// The user chose a city; the picker has already reset itself.
+    Picked(u32),
+}
+
+impl EventEmitter<SearchEvent> for SearchPicker {}
+
+impl SearchPicker {
+    pub(super) fn new(index: Rc<SearchIndex>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let input = cx.new(|cx| TextInput::new("search for a city...", cx));
+        window.focus(&input.focus_handle(cx));
+        cx.observe(&input, Self::search).detach();
+
+        Self {
+            input,
+            index,
+            query: String::new(),
+            results: Vec::new(),
+            scroll: ScrollHandle::new(),
+        }
+    }
+
     /// The input emits no change event, so this runs on every notification it
     /// sends — cursor moves and selections included — and re-searches only when
     /// the text itself changed.
-    pub(super) fn search(&mut self, input: Entity<TextInput>, cx: &mut Context<Self>) {
+    fn search(&mut self, input: Entity<TextInput>, cx: &mut Context<Self>) {
         if input.read(cx).text() == self.query {
             return;
         }
@@ -34,11 +73,24 @@ impl Elsewhere {
         cx.notify();
     }
 
-    pub(super) fn render_search(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    /// Hands the choice up and starts over on an empty input.
+    fn pick(&mut self, geonameid: u32, cx: &mut Context<Self>) {
+        self.input.update(cx, |input, cx| input.reset(cx));
+        self.query.clear();
+        self.results.clear();
+        cx.emit(SearchEvent::Picked(geonameid));
+        cx.notify();
+    }
+}
+
+impl Focusable for SearchPicker {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.input.focus_handle(cx)
+    }
+}
+
+impl Render for SearchPicker {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The results float over the saved list rather than sitting in
         // the column, so the rows below hold still while the user types.
         div()
@@ -63,13 +115,13 @@ impl Elsewhere {
                             |this, event: &MouseDownEvent, _window, cx| {
                                 // Everything above the panel is the input
                                 // strip; a click there keeps the panel open.
-                                if event.position.y < this.results_scroll.bounds().top() {
+                                if event.position.y < this.scroll.bounds().top() {
                                     return;
                                 }
                                 this.dismiss(cx)
                             },
                         ))
-                        .child(scrollbar(&self.results_scroll))
+                        .child(scrollbar(&self.scroll))
                         .child(
                             div()
                                 .id("results")
@@ -78,7 +130,7 @@ impl Elsewhere {
                                 .gap_0p5()
                                 .max_h(window.viewport_size().height - px(80.))
                                 .overflow_y_scroll()
-                                .track_scroll(&self.results_scroll)
+                                .track_scroll(&self.scroll)
                                 .children(self.results.iter().filter_map(|geonameid| {
                                     let city = self.index.city(*geonameid)?;
                                     Some(
@@ -93,7 +145,7 @@ impl Elsewhere {
                                             .on_click(cx.listener({
                                                 let geonameid = *geonameid;
                                                 move |this, _event, _window, cx| {
-                                                    this.save(geonameid, cx)
+                                                    this.pick(geonameid, cx)
                                                 }
                                             }))
                                             .child(self.index.label(city)),
