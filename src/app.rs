@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use gpui::{Context, Entity, Focusable, Task, Window, actions, div, prelude::*, px, rgb};
+use gpui::{
+    Bounds, Context, Entity, Focusable, MouseDownEvent, ScrollHandle, Task, Window, actions,
+    canvas, deferred, div, fill, point, prelude::*, px, rgb, size,
+};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
 
@@ -25,6 +28,9 @@ pub struct Elsewhere {
     query: String,
     /// The geonameids currently offered, best first.
     results: Vec<u32>,
+    /// Where the results panel has scrolled to. Doubles as the panel's on-screen
+    /// bounds, which the dismiss guard and the scrollbar both read.
+    results_scroll: ScrollHandle,
     /// The geonameids picked so far, oldest first.
     saved: Vec<u32>,
     /// The zones of the saved cities, resolved once each. A zone this machine's
@@ -81,6 +87,7 @@ impl Elsewhere {
             index,
             query: String::new(),
             results: Vec::new(),
+            results_scroll: ScrollHandle::new(),
             saved,
             zones,
             drag: None,
@@ -121,6 +128,14 @@ impl Elsewhere {
         }
         self.input.update(cx, |input, cx| input.reset(cx));
         self.query.clear();
+        self.results.clear();
+        cx.notify();
+    }
+
+    /// Closes the results panel. `query` stays as it is: `search()` re-runs only
+    /// when the input text differs from it, so clearing it would let the next
+    /// input notification reopen the panel.
+    fn dismiss(&mut self, cx: &mut Context<Self>) {
         self.results.clear();
         cx.notify();
     }
@@ -214,6 +229,44 @@ fn zones_for(index: &SearchIndex, saved: &[u32]) -> HashMap<String, Option<TimeZ
     zones
 }
 
+/// The results panel's scrollbar: a thumb painted only while the list
+/// overflows. It reads the handle at paint time, after layout has settled, so
+/// it needs no state of its own — but it is display-only; the wheel scrolls.
+fn scrollbar(handle: &ScrollHandle) -> impl IntoElement {
+    let scroll = handle.clone();
+    canvas(
+        move |_bounds, _window, _cx| scroll,
+        move |bounds, scroll, window, _cx| {
+            let overflow = scroll.max_offset().height;
+            if overflow <= px(0.) {
+                return;
+            }
+            let track = bounds.size.height;
+            let viewport = scroll.bounds().size.height;
+            let mut thumb = track * (viewport / (viewport + overflow));
+            if thumb < px(20.) {
+                thumb = px(20.);
+            }
+            let along = (track - thumb) * (-scroll.offset().y / overflow);
+            window.paint_quad(
+                fill(
+                    Bounds::new(
+                        point(bounds.origin.x, bounds.origin.y + along),
+                        size(bounds.size.width, thumb),
+                    ),
+                    rgb(0x45475a),
+                )
+                .corner_radii(px(1.5)),
+            );
+        },
+    )
+    .absolute()
+    .top_1()
+    .bottom_1()
+    .right_0p5()
+    .w(px(3.))
+}
+
 /// Re-renders on every minute boundary, so the shown times stay honest without
 /// waking the app up in between.
 fn tick(cx: &mut Context<Elsewhere>) -> Task<()> {
@@ -231,7 +284,7 @@ fn tick(cx: &mut Context<Elsewhere>) -> Task<()> {
 }
 
 impl Render for Elsewhere {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // gpui refreshes the window once a drag ends, however it ended, so this
         // is where a cancelled drag is forgotten.
         let dragging = cx.has_active_drag();
@@ -266,26 +319,69 @@ impl Render for Elsewhere {
             .p_4()
             .bg(rgb(0x1e1e2e))
             .text_color(rgb(0xcdd6f4))
-            .child(self.input.clone())
-            .children(self.results.iter().filter_map(|geonameid| {
-                let city = self.index.city(*geonameid)?;
-                Some(
-                    div()
-                        .id(("result", *geonameid as usize))
-                        .px_2()
-                        .py_1()
-                        .rounded_md()
-                        .bg(rgb(0x181825))
-                        .cursor_pointer()
-                        .hover(|style| style.bg(rgb(0x313244)))
-                        .active(|style| style.opacity(0.8))
-                        .on_click(cx.listener({
-                            let geonameid = *geonameid;
-                            move |this, _event, _window, cx| this.save(geonameid, cx)
-                        }))
-                        .child(self.index.label(city)),
-                )
-            }))
+            .child(
+                // The results float over the saved list rather than sitting in
+                // the column, so the rows below hold still while the user types.
+                div()
+                    .relative()
+                    .child(self.input.clone())
+                    .children((!self.results.is_empty()).then(|| {
+                        deferred(
+                            div()
+                                .occlude()
+                                .absolute()
+                                .top_full()
+                                .left_0()
+                                .right_0()
+                                .mt_1()
+                                .p_1()
+                                .rounded_md()
+                                .bg(rgb(0x181825))
+                                .border_1()
+                                .border_color(rgb(0x313244))
+                                .shadow_lg()
+                                .on_mouse_down_out(cx.listener(|this, event: &MouseDownEvent, _window, cx| {
+                                    // Everything above the panel is the input
+                                    // strip; a click there keeps the panel open.
+                                    if event.position.y < this.results_scroll.bounds().top() {
+                                        return;
+                                    }
+                                    this.dismiss(cx)
+                                }))
+                                .child(scrollbar(&self.results_scroll))
+                                .child(
+                                    div()
+                                        .id("results")
+                                        .flex()
+                                        .flex_col()
+                                        .gap_0p5()
+                                        .max_h(window.viewport_size().height - px(80.))
+                                        .overflow_y_scroll()
+                                        .track_scroll(&self.results_scroll)
+                                        .children(self.results.iter().filter_map(|geonameid| {
+                                            let city = self.index.city(*geonameid)?;
+                                            Some(
+                                                div()
+                                                    .id(("result", *geonameid as usize))
+                                                    .px_2()
+                                                    .py_1()
+                                                    .rounded_md()
+                                                    .cursor_pointer()
+                                                    .hover(|style| style.bg(rgb(0x313244)))
+                                                    .active(|style| style.opacity(0.8))
+                                                    .on_click(cx.listener({
+                                                        let geonameid = *geonameid;
+                                                        move |this, _event, _window, cx| {
+                                                            this.save(geonameid, cx)
+                                                        }
+                                                    }))
+                                                    .child(self.index.label(city)),
+                                            )
+                                        })),
+                                ),
+                        )
+                    })),
+            )
             .children((self.saved.len() > 1 || self.pinned.is_some()).then(|| {
                 div()
                     .flex()
