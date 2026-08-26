@@ -17,6 +17,10 @@ fn main() {
         cx.bind_keys([
             KeyBinding::new("enter", app::Commit, Some("PinEditor")),
             KeyBinding::new("escape", app::Cancel, Some("PinEditor")),
+            KeyBinding::new("enter", app::search::Confirm, Some("SearchPicker")),
+            KeyBinding::new("escape", app::search::Clear, Some("SearchPicker")),
+            KeyBinding::new("up", app::search::MoveUp, Some("SearchPicker")),
+            KeyBinding::new("down", app::search::MoveDown, Some("SearchPicker")),
         ]);
 
         let bounds = Bounds::centered(None, size(px(400.), px(300.)), cx);

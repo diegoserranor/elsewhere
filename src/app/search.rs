@@ -2,13 +2,17 @@ use std::rc::Rc;
 
 use gpui::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, MouseDownEvent, ScrollHandle,
-    Window, deferred, div, prelude::*, px, rgb,
+    Window, actions, deferred, div, prelude::*, px, rgb,
 };
 
 use super::scrollbar::scrollbar;
 use crate::search::SearchIndex;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
+
+// Keys the picker answers to. The vendored input claims none of them, so they
+// bubble up to the wrapper div carrying the "SearchPicker" context.
+actions!(search, [Confirm, Clear, MoveUp, MoveDown]);
 
 /// How many search results the picker offers at a time.
 pub(super) const RESULTS: usize = 8;
@@ -21,6 +25,9 @@ pub(super) struct SearchPicker {
     query: String,
     /// The geonameids currently offered, best first.
     results: Vec<u32>,
+    /// Which result is highlighted, as an index into `results`. Only meaningful
+    /// while `results` is non-empty.
+    selected: usize,
     /// Where the results panel has scrolled to. Doubles as the panel's on-screen
     /// bounds, which the dismiss guard and the scrollbar both read.
     scroll: ScrollHandle,
@@ -44,6 +51,7 @@ impl SearchPicker {
             index,
             query: String::new(),
             results: Vec::new(),
+            selected: 0,
             scroll: ScrollHandle::new(),
         }
     }
@@ -62,6 +70,9 @@ impl SearchPicker {
             .iter()
             .map(|city| city.geonameid)
             .collect();
+        // Every keystroke reshuffles the results, so the highlight goes back to
+        // the top hit: plain Enter saves the best match.
+        self.selected = 0;
         cx.notify();
     }
 
@@ -73,12 +84,48 @@ impl SearchPicker {
         cx.notify();
     }
 
-    /// Hands the choice up and starts over on an empty input.
-    fn pick(&mut self, geonameid: u32, cx: &mut Context<Self>) {
+    /// Back to an empty input and no results. `query` is cleared alongside the
+    /// input text so the two stay in step and `search()` stays quiet.
+    fn reset(&mut self, cx: &mut Context<Self>) {
         self.input.update(cx, |input, cx| input.reset(cx));
         self.query.clear();
         self.results.clear();
+        self.selected = 0;
+    }
+
+    /// Hands the choice up and starts over on an empty input.
+    fn pick(&mut self, geonameid: u32, cx: &mut Context<Self>) {
+        self.reset(cx);
         cx.emit(SearchEvent::Picked(geonameid));
+        cx.notify();
+    }
+
+    fn confirm(&mut self, _: &Confirm, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(&geonameid) = self.results.get(self.selected) {
+            self.pick(geonameid, cx);
+        }
+    }
+
+    fn clear(&mut self, _: &Clear, _window: &mut Window, cx: &mut Context<Self>) {
+        self.reset(cx);
+        cx.notify();
+    }
+
+    fn move_up(&mut self, _: &MoveUp, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.results.is_empty() {
+            return;
+        }
+        self.selected = self.selected.saturating_sub(1);
+        self.scroll.scroll_to_item(self.selected);
+        cx.notify();
+    }
+
+    fn move_down(&mut self, _: &MoveDown, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.results.is_empty() {
+            return;
+        }
+        self.selected = (self.selected + 1).min(self.results.len() - 1);
+        self.scroll.scroll_to_item(self.selected);
         cx.notify();
     }
 }
@@ -95,6 +142,11 @@ impl Render for SearchPicker {
         // the column, so the rows below hold still while the user types.
         div()
             .relative()
+            .key_context("SearchPicker")
+            .on_action(cx.listener(Self::confirm))
+            .on_action(cx.listener(Self::clear))
+            .on_action(cx.listener(Self::move_up))
+            .on_action(cx.listener(Self::move_down))
             .child(self.input.clone())
             .children((!self.results.is_empty()).then(|| {
                 deferred(
@@ -131,26 +183,33 @@ impl Render for SearchPicker {
                                 .max_h(window.viewport_size().height - px(80.))
                                 .overflow_y_scroll()
                                 .track_scroll(&self.scroll)
-                                .children(self.results.iter().filter_map(|geonameid| {
-                                    let city = self.index.city(*geonameid)?;
-                                    Some(
-                                        div()
-                                            .id(("result", *geonameid as usize))
-                                            .px_2()
-                                            .py_1()
-                                            .rounded_md()
-                                            .cursor_pointer()
-                                            .hover(|style| style.bg(rgb(theme::SURFACE0)))
-                                            .active(|style| style.opacity(0.8))
-                                            .on_click(cx.listener({
-                                                let geonameid = *geonameid;
-                                                move |this, _event, _window, cx| {
-                                                    this.pick(geonameid, cx)
-                                                }
-                                            }))
-                                            .child(self.index.label(city)),
-                                    )
-                                })),
+                                .children(self.results.iter().enumerate().filter_map(
+                                    |(i, geonameid)| {
+                                        let city = self.index.city(*geonameid)?;
+                                        Some(
+                                            div()
+                                                .id(("result", *geonameid as usize))
+                                                .px_2()
+                                                .py_1()
+                                                .rounded_md()
+                                                .cursor_pointer()
+                                                // The keyboard highlight wears
+                                                // the hover look, held on.
+                                                .when(i == self.selected, |row| {
+                                                    row.bg(rgb(theme::SURFACE0))
+                                                })
+                                                .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                                                .active(|style| style.opacity(0.8))
+                                                .on_click(cx.listener({
+                                                    let geonameid = *geonameid;
+                                                    move |this, _event, _window, cx| {
+                                                        this.pick(geonameid, cx)
+                                                    }
+                                                }))
+                                                .child(self.index.label(city)),
+                                        )
+                                    },
+                                )),
                         ),
                 )
             }))

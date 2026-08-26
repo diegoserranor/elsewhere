@@ -8,7 +8,7 @@ use jiff::tz::TimeZone;
 mod drag;
 mod row;
 mod scrollbar;
-mod search;
+pub(crate) mod search;
 mod toolbar;
 
 use crate::cities;
