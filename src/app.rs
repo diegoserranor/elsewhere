@@ -11,6 +11,7 @@ use crate::cities;
 use crate::clock;
 use crate::saved;
 use crate::search::SearchIndex;
+use crate::theme;
 use crate::vendor::text_input::TextInput;
 
 /// How many search results the picker offers at a time.
@@ -62,8 +63,8 @@ impl Render for DragRow {
             .px_2()
             .py_1()
             .rounded_md()
-            .bg(rgb(0x181825))
-            .text_color(rgb(0xa6adc8))
+            .bg(rgb(theme::MANTLE))
+            .text_color(rgb(theme::SUBTEXT0))
             .opacity(0.9)
             .shadow_md()
             .child(self.label.clone())
@@ -143,7 +144,11 @@ impl Elsewhere {
     fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
         self.saved.retain(|id| *id != geonameid);
         saved::save(&self.saved);
-        if self.editing.as_ref().is_some_and(|(id, _)| *id == geonameid) {
+        if self
+            .editing
+            .as_ref()
+            .is_some_and(|(id, _)| *id == geonameid)
+        {
             self.close_editor(window, cx);
         }
         cx.notify();
@@ -151,7 +156,13 @@ impl Elsewhere {
 
     /// Opens the what-if editor on a row's time. The current reading rides
     /// along as the placeholder, since the input cannot be prefilled.
-    fn edit(&mut self, geonameid: u32, current: String, window: &mut Window, cx: &mut Context<Self>) {
+    fn edit(
+        &mut self,
+        geonameid: u32,
+        current: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let input = cx.new(|cx| TextInput::new(current, cx));
         window.focus(&input.focus_handle(cx));
         cx.observe(&input, Self::retime).detach();
@@ -254,7 +265,7 @@ fn scrollbar(handle: &ScrollHandle) -> impl IntoElement {
                         point(bounds.origin.x, bounds.origin.y + along),
                         size(bounds.size.width, thumb),
                     ),
-                    rgb(0x45475a),
+                    rgb(theme::SURFACE1),
                 )
                 .corner_radii(px(1.5)),
             );
@@ -317,15 +328,13 @@ impl Render for Elsewhere {
             .flex_col()
             .gap_3()
             .p_4()
-            .bg(rgb(0x1e1e2e))
-            .text_color(rgb(0xcdd6f4))
+            .bg(rgb(theme::BASE))
+            .text_color(rgb(theme::TEXT))
             .child(
                 // The results float over the saved list rather than sitting in
                 // the column, so the rows below hold still while the user types.
-                div()
-                    .relative()
-                    .child(self.input.clone())
-                    .children((!self.results.is_empty()).then(|| {
+                div().relative().child(self.input.clone()).children(
+                    (!self.results.is_empty()).then(|| {
                         deferred(
                             div()
                                 .occlude()
@@ -336,18 +345,20 @@ impl Render for Elsewhere {
                                 .mt_1()
                                 .p_1()
                                 .rounded_md()
-                                .bg(rgb(0x181825))
+                                .bg(rgb(theme::MANTLE))
                                 .border_1()
-                                .border_color(rgb(0x313244))
+                                .border_color(rgb(theme::SURFACE0))
                                 .shadow_lg()
-                                .on_mouse_down_out(cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                                    // Everything above the panel is the input
-                                    // strip; a click there keeps the panel open.
-                                    if event.position.y < this.results_scroll.bounds().top() {
-                                        return;
-                                    }
-                                    this.dismiss(cx)
-                                }))
+                                .on_mouse_down_out(cx.listener(
+                                    |this, event: &MouseDownEvent, _window, cx| {
+                                        // Everything above the panel is the input
+                                        // strip; a click there keeps the panel open.
+                                        if event.position.y < this.results_scroll.bounds().top() {
+                                            return;
+                                        }
+                                        this.dismiss(cx)
+                                    },
+                                ))
                                 .child(scrollbar(&self.results_scroll))
                                 .child(
                                     div()
@@ -367,7 +378,7 @@ impl Render for Elsewhere {
                                                     .py_1()
                                                     .rounded_md()
                                                     .cursor_pointer()
-                                                    .hover(|style| style.bg(rgb(0x313244)))
+                                                    .hover(|style| style.bg(rgb(theme::SURFACE0)))
                                                     .active(|style| style.opacity(0.8))
                                                     .on_click(cx.listener({
                                                         let geonameid = *geonameid;
@@ -380,7 +391,8 @@ impl Render for Elsewhere {
                                         })),
                                 ),
                         )
-                    })),
+                    }),
+                ),
             )
             .children((self.saved.len() > 1 || self.pinned.is_some()).then(|| {
                 div()
@@ -395,8 +407,8 @@ impl Render for Elsewhere {
                             .text_xs()
                             .rounded_md()
                             .cursor_pointer()
-                            .text_color(rgb(0xf9e2af))
-                            .hover(|style| style.bg(rgb(0x313244)))
+                            .text_color(rgb(theme::YELLOW))
+                            .hover(|style| style.bg(rgb(theme::SURFACE0)))
                             .on_click(
                                 cx.listener(|this, _event, window, cx| this.unpin(window, cx)),
                             )
@@ -410,11 +422,11 @@ impl Render for Elsewhere {
                             .rounded_md()
                             .cursor_pointer()
                             .text_color(if self.westward {
-                                rgb(0x89b4fa)
+                                rgb(theme::BLUE)
                             } else {
-                                rgb(0x6c7086)
+                                rgb(theme::OVERLAY0)
                             })
-                            .hover(|style| style.bg(rgb(0x313244)))
+                            .hover(|style| style.bg(rgb(theme::SURFACE0)))
                             .on_click(
                                 cx.listener(|this, _event, _window, cx| this.toggle_westward(cx)),
                             )
@@ -449,7 +461,7 @@ impl Render for Elsewhere {
                             row.border_t_2()
                                 .border_color(gpui::transparent_black())
                                 .drag_over::<DragRow>(|style, _, _, _| {
-                                    style.border_color(rgb(0x89b4fa))
+                                    style.border_color(rgb(theme::BLUE))
                                 })
                                 .on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
                                     this.drop(row.geonameid, Some(geonameid), cx)
@@ -462,7 +474,7 @@ impl Render for Elsewhere {
                             div()
                                 .id(("grip", geonameid as usize))
                                 .cursor_grab()
-                                .text_color(rgb(0xa6adc8))
+                                .text_color(rgb(theme::SUBTEXT0))
                                 .opacity(0.4)
                                 .group_hover(group, |style| style.opacity(1.))
                                 .on_drag(
@@ -486,9 +498,11 @@ impl Render for Elsewhere {
                                 )
                                 .child("⠿")
                         }))
-                        .child(div().flex_1().text_color(rgb(0xa6adc8)).child(label))
+                        .child(div().flex_1().text_color(rgb(theme::SUBTEXT0)).child(label))
                         .children(
-                            day.map(|day| div().text_xs().text_color(rgb(0x6c7086)).child(day)),
+                            day.map(|day| {
+                                div().text_xs().text_color(rgb(theme::OVERLAY0)).child(day)
+                            }),
                         )
                         .child(match &self.editing {
                             Some((editing, input)) if *editing == geonameid => div()
@@ -505,11 +519,11 @@ impl Render for Elsewhere {
                                 .px_1()
                                 .rounded_md()
                                 .when(self.pinned.is_some(), |cell| {
-                                    cell.text_color(rgb(0xf9e2af))
+                                    cell.text_color(rgb(theme::YELLOW))
                                 })
                                 .when(known, |cell| {
                                     cell.cursor_pointer()
-                                        .hover(|style| style.bg(rgb(0x313244)))
+                                        .hover(|style| style.bg(rgb(theme::SURFACE0)))
                                         .on_click(cx.listener({
                                             let time = time.clone();
                                             move |this, _event, window, cx| {
@@ -525,9 +539,9 @@ impl Render for Elsewhere {
                                 .id(("delete", geonameid as usize))
                                 .px_2()
                                 .rounded_md()
-                                .text_color(rgb(0xf38ba8))
+                                .text_color(rgb(theme::RED))
                                 .cursor_pointer()
-                                .hover(|style| style.bg(rgb(0x313244)))
+                                .hover(|style| style.bg(rgb(theme::SURFACE0)))
                                 .active(|style| style.opacity(0.8))
                                 .on_click(cx.listener(move |this, _event, window, cx| {
                                     this.delete(geonameid, window, cx)
@@ -544,7 +558,7 @@ impl Render for Elsewhere {
                         .min_h_4()
                         .border_t_2()
                         .border_color(gpui::transparent_black())
-                        .drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(0x89b4fa)))
+                        .drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(theme::BLUE)))
                         .on_drop(cx.listener(|this, row: &DragRow, _window, cx| {
                             this.drop(row.geonameid, None, cx)
                         })),

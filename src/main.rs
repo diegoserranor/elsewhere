@@ -8,6 +8,7 @@ mod cities;
 mod clock;
 mod saved;
 mod search;
+mod theme;
 mod vendor;
 
 fn main() {
