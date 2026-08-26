@@ -70,7 +70,7 @@ impl Elsewhere {
     /// Drops the editor and hands focus back to the search input.
     pub(super) fn close_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.editing = None;
-        window.focus(&self.input.focus_handle(cx));
+        window.focus(&self.picker.focus_handle(cx));
         cx.notify();
     }
 

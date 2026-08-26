@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
-use gpui::{Context, Entity, Focusable, ScrollHandle, Task, Window, actions, div, prelude::*, rgb};
+use gpui::{Context, Entity, Task, Window, actions, div, prelude::*, rgb};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
 
@@ -16,22 +17,17 @@ use crate::saved;
 use crate::search::SearchIndex;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
+use search::{SearchEvent, SearchPicker};
 
 // Keys the pin editor answers to. The vendored input claims neither, so they
 // bubble up to the wrapper div carrying the "PinEditor" context.
 actions!(pin_editor, [Commit, Cancel]);
 
 pub struct Elsewhere {
-    input: Entity<TextInput>,
-    index: SearchIndex,
-    /// The last text seen in the input, to spot the keystrokes among the
-    /// input's other notifications.
-    query: String,
-    /// The geonameids currently offered, best first.
-    results: Vec<u32>,
-    /// Where the results panel has scrolled to. Doubles as the panel's on-screen
-    /// bounds, which the dismiss guard and the scrollbar both read.
-    results_scroll: ScrollHandle,
+    /// The search region, which owns its input and results and reports a choice
+    /// back as a `SearchEvent`.
+    picker: Entity<SearchPicker>,
+    index: Rc<SearchIndex>,
     /// The geonameids picked so far, oldest first.
     saved: Vec<u32>,
     /// The zones of the saved cities, resolved once each. A zone this machine's
@@ -53,22 +49,18 @@ pub struct Elsewhere {
 
 impl Elsewhere {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input = cx.new(|cx| TextInput::new("search for a city...", cx));
-        window.focus(&input.focus_handle(cx));
-        cx.observe(&input, Self::search).detach();
+        let index = Rc::new(SearchIndex::new(cities::load()));
+        let picker = cx.new(|cx| SearchPicker::new(index.clone(), window, cx));
+        cx.subscribe(&picker, Self::picked).detach();
 
-        let index = SearchIndex::new(cities::load());
         let mut saved = saved::load();
         // A regenerated dataset may have dropped a city saved by an older run.
         saved.retain(|id| index.city(*id).is_some());
         let zones = zones_for(&index, &saved);
 
         Self {
-            input,
+            picker,
             index,
-            query: String::new(),
-            results: Vec::new(),
-            results_scroll: ScrollHandle::new(),
             saved,
             zones,
             drag: None,
@@ -77,6 +69,16 @@ impl Elsewhere {
             editing: None,
             _tick: tick(cx),
         }
+    }
+
+    fn picked(
+        &mut self,
+        _picker: Entity<SearchPicker>,
+        event: &SearchEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let SearchEvent::Picked(geonameid) = event;
+        self.save(*geonameid, cx);
     }
 
     fn save(&mut self, geonameid: u32, cx: &mut Context<Self>) {
@@ -90,9 +92,6 @@ impl Elsewhere {
             }
             saved::save(&self.saved);
         }
-        self.input.update(cx, |input, cx| input.reset(cx));
-        self.query.clear();
-        self.results.clear();
         cx.notify();
     }
 }
@@ -128,7 +127,7 @@ fn tick(cx: &mut Context<Elsewhere>) -> Task<()> {
 }
 
 impl Render for Elsewhere {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // gpui refreshes the window once a drag ends, however it ended, so this
         // is where a cancelled drag is forgotten.
         let dragging = cx.has_active_drag();
@@ -163,7 +162,7 @@ impl Render for Elsewhere {
             .p_4()
             .bg(rgb(theme::BASE))
             .text_color(rgb(theme::TEXT))
-            .child(self.render_search(window, cx))
+            .child(self.picker.clone())
             .children(
                 (self.saved.len() > 1 || self.pinned.is_some()).then(|| self.render_toolbar(cx)),
             )
