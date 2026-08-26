@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use gpui::{Context, Entity, Task, Window, actions, div, prelude::*, rgb};
+use gpui::{Context, Entity, ScrollHandle, Task, Window, actions, div, prelude::*, rgb};
 use jiff::Zoned;
 
 mod drag;
@@ -15,6 +15,7 @@ use crate::saved;
 use crate::search::SearchIndex;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
+use scrollbar::scrollbar;
 use search::{SearchEvent, SearchPicker};
 
 // Keys the pin editor answers to. The vendored input claims neither, so they
@@ -40,6 +41,9 @@ pub struct Elsewhere {
     pinned: Option<Zoned>,
     /// The row whose time is being typed over, and the input doing it.
     editing: Option<(u32, Entity<TextInput>)>,
+    /// Where the saved list has scrolled to. Doubles as the list's on-screen
+    /// bounds, which the scrollbar reads.
+    saved_scroll: ScrollHandle,
     /// The clock, kept alive for as long as the window is.
     _tick: Task<()>,
 }
@@ -70,6 +74,7 @@ impl Elsewhere {
             westward: false,
             pinned: None,
             editing: None,
+            saved_scroll: ScrollHandle::new(),
             _tick: tick(cx),
         }
     }
@@ -91,6 +96,11 @@ impl Elsewhere {
                 self.zones.resolve(&city.timezone);
             }
             saved::save(&self.saved);
+            // Only the hand-arranged order appends at the end; westward drops
+            // the new row wherever its longitude falls.
+            if !self.westward {
+                self.saved_scroll.scroll_to_bottom();
+            }
         }
         cx.notify();
     }
@@ -152,13 +162,31 @@ impl Render for Elsewhere {
             .children(
                 (self.saved.len() > 1 || self.pinned.is_some()).then(|| self.render_toolbar(cx)),
             )
-            .children(
-                order
-                    .into_iter()
-                    .filter_map(|geonameid| self.render_row(geonameid, &now, dragging, cx)),
+            // The rows scroll on their own, so the input and toolbar above stay
+            // put however long the list grows. `min_h_0` is what lets this flex
+            // child shrink below its content and actually overflow.
+            .child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        div()
+                            .id("saved")
+                            .size_full()
+                            .flex()
+                            .flex_col()
+                            .gap_3()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.saved_scroll)
+                            .children(order.into_iter().filter_map(|geonameid| {
+                                self.render_row(geonameid, &now, dragging, cx)
+                            }))
+                            .when(!self.westward && dragging && self.drag.is_some(), |list| {
+                                list.child(self.render_drop_tail(cx))
+                            }),
+                    )
+                    .child(scrollbar(&self.saved_scroll)),
             )
-            .when(!self.westward && dragging && self.drag.is_some(), |list| {
-                list.child(self.render_drop_tail(cx))
-            })
     }
 }
