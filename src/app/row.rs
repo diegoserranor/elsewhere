@@ -1,4 +1,4 @@
-use gpui::{Context, Entity, Focusable, Window, div, prelude::*, px, rgb};
+use gpui::{Context, Entity, Focusable, Pixels, Window, div, prelude::*, px, rgb};
 use jiff::Zoned;
 
 use super::drag::{DragRow, drop_target};
@@ -7,6 +7,10 @@ use crate::clock;
 use crate::saved;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
+
+/// Width of the time column. Fixed so the reading and the what-if editor
+/// occupy the same box, and so a row does not reflow as its digits change.
+const TIME_WIDTH: Pixels = px(64.);
 
 impl Elsewhere {
     fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
@@ -157,13 +161,17 @@ impl Elsewhere {
                         .key_context("PinEditor")
                         .on_action(cx.listener(Self::commit))
                         .on_action(cx.listener(Self::cancel))
-                        .w(px(64.))
+                        .w(TIME_WIDTH)
                         .child(input.clone())
                         .into_any_element(),
                     _ => div()
                         .id(("time", geonameid as usize))
+                        .w(TIME_WIDTH)
                         .px_1()
                         .rounded_md()
+                        // Right-aligned so the units line up down the column,
+                        // whatever the hour's digit count.
+                        .text_right()
                         .when(self.pinned.is_some(), |cell| {
                             cell.text_color(rgb(theme::YELLOW))
                         })
