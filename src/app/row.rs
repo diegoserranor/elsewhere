@@ -118,10 +118,15 @@ impl Elsewhere {
                 .children((!self.westward).then(|| {
                     div()
                         .id(("grip", geonameid as usize))
+                        .px_1()
+                        .rounded_md()
                         .cursor_grab()
                         .text_color(rgb(theme::SUBTEXT0))
+                        // Hidden at rest, dim once the row is hovered, and
+                        // only full strength under the pointer itself.
                         .opacity(0.)
-                        .group_hover(group.clone(), |style| style.opacity(1.))
+                        .group_hover(group.clone(), |style| style.opacity(0.5))
+                        .hover(|style| style.opacity(1.).bg(rgb(theme::SURFACE0)))
                         .on_drag(
                             DragRow {
                                 geonameid,
@@ -182,9 +187,9 @@ impl Elsewhere {
                         .rounded_md()
                         .text_color(rgb(theme::RED))
                         .opacity(0.)
-                        .group_hover(group, |style| style.opacity(1.))
+                        .group_hover(group, |style| style.opacity(0.5))
                         .cursor_pointer()
-                        .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                        .hover(|style| style.opacity(1.).bg(rgb(theme::SURFACE0)))
                         .active(|style| style.opacity(0.8))
                         .on_click(cx.listener(move |this, _event, window, cx| {
                             this.delete(geonameid, window, cx)
