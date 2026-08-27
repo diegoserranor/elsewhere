@@ -20,6 +20,17 @@ const TIME_WIDTH: Pixels = px(64.);
 /// than its text needs as a result; the honest fix is a shorter input.
 const TIME_HEIGHT: Pixels = px(36.);
 
+/// Width of the cell a hover control sits in — the grip and the x. The
+/// controls are invisible at rest but their cells are not, so the labels and
+/// the times keep a column of their own between the two whatever the pointer
+/// is doing.
+const CONTROL_WIDTH: Pixels = px(24.);
+
+/// How far the search bar and the toolbar are inset to meet that column: a
+/// control's cell plus the row's `gap_2` beside it. Spelled out because
+/// `Pixels` does not add in a const.
+pub(super) const GUTTER: Pixels = px(32.);
+
 /// Mono faces for the time column, best first. Equal-width digits keep a
 /// reading from shifting as it ticks, which tabular figures would also do,
 /// except that `tnum` is missing from several of the sans faces gpui falls
@@ -154,10 +165,17 @@ impl Elsewhere {
                 .when(dragging && self.drag == Some(geonameid), |row| {
                     row.opacity(0.4)
                 })
-                .children((!self.westward).then(|| {
+                // The cell is there in either view, holding an inert spacer
+                // where the westward order has nothing to drag, so that
+                // toggling the order does not slide the labels sideways.
+                .child(if self.westward {
+                    div().w(CONTROL_WIDTH).into_any_element()
+                } else {
                     div()
                         .id(("grip", geonameid as usize))
-                        .px_1()
+                        .w(CONTROL_WIDTH)
+                        .flex()
+                        .justify_center()
                         .rounded_md()
                         .cursor_grab()
                         .text_color(rgb(theme::SUBTEXT0))
@@ -184,7 +202,8 @@ impl Elsewhere {
                             },
                         )
                         .child("⠿")
-                }))
+                        .into_any_element()
+                })
                 // `flex_1` on its own is not enough: a flex item's automatic
                 // minimum is its own content, so a long label would hold the
                 // row open and shove the time and the x past the right edge.
@@ -248,7 +267,9 @@ impl Elsewhere {
                 .child(
                     div()
                         .id(("delete", geonameid as usize))
-                        .px_2()
+                        .w(CONTROL_WIDTH)
+                        .flex()
+                        .justify_center()
                         .rounded_md()
                         .text_color(rgb(theme::RED))
                         .opacity(0.)

@@ -163,9 +163,24 @@ impl Render for Elsewhere {
             .p_4()
             .bg(rgb(theme::BASE))
             .text_color(rgb(theme::TEXT))
-            .child(self.picker.clone())
+            // Both are inset by a row's gutter, so the search bar starts where
+            // the labels do and the toolbar ends where the times do. The list
+            // below keeps the full width: its gutters are the hover controls.
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .mx(row::GUTTER)
+                    .child(self.picker.clone()),
+            )
             .children(
-                (self.saved.len() > 1 || self.pinned.is_some()).then(|| self.render_toolbar(cx)),
+                (self.saved.len() > 1 || self.pinned.is_some()).then(|| {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .mx(row::GUTTER)
+                        .child(self.render_toolbar(cx))
+                }),
             )
             // The rows scroll on their own, so the input and toolbar above stay
             // put however long the list grows. `min_h_0` is what lets this flex
