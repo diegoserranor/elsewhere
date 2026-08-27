@@ -14,6 +14,12 @@ use crate::vendor::text_input::TextInput;
 /// occupy the same box, and so a row does not reflow as its digits change.
 const TIME_WIDTH: Pixels = px(64.);
 
+/// Height of the time column, and with it the row. This is the box the
+/// vendored input renders at, reserved whether or not the editor is open, so
+/// that opening one does not push the rest of the list down. The row is taller
+/// than its text needs as a result; the honest fix is a shorter input.
+const TIME_HEIGHT: Pixels = px(36.);
+
 /// Mono faces for the time column, best first. Equal-width digits keep a
 /// reading from shifting as it ticks, which tabular figures would also do,
 /// except that `tnum` is missing from several of the sans faces gpui falls
@@ -191,32 +197,40 @@ impl Elsewhere {
                         .on_action(cx.listener(Self::commit))
                         .on_action(cx.listener(Self::cancel))
                         .w(TIME_WIDTH)
+                        .h(TIME_HEIGHT)
                         .when_some(self.mono.clone(), Styled::font_family)
                         .child(input.clone())
                         .into_any_element(),
+                    // The cell is fixed so the column lines up; the pill inside
+                    // wraps the digits, so the hover wash sits under them
+                    // rather than under the empty half of a right-aligned cell.
                     _ => div()
-                        .id(("time", geonameid as usize))
                         .w(TIME_WIDTH)
-                        .px_1()
-                        .rounded_md()
-                        // Right-aligned so the units line up down the column,
-                        // whatever the hour's digit count.
-                        .text_right()
-                        .when_some(self.mono.clone(), Styled::font_family)
-                        .when(self.pinned.is_some(), |cell| {
-                            cell.text_color(rgb(theme::YELLOW))
-                        })
-                        .when(known, |cell| {
-                            cell.cursor_pointer()
-                                .hover(|style| style.bg(rgb(theme::SURFACE0)))
-                                .on_click(cx.listener({
-                                    let time = time.clone();
-                                    move |this, _event, window, cx| {
-                                        this.edit(geonameid, time.clone(), window, cx)
-                                    }
-                                }))
-                        })
-                        .child(time.clone())
+                        .h(TIME_HEIGHT)
+                        .flex()
+                        .items_center()
+                        .justify_end()
+                        .child(
+                            div()
+                                .id(("time", geonameid as usize))
+                                .px_1()
+                                .rounded_md()
+                                .when_some(self.mono.clone(), Styled::font_family)
+                                .when(self.pinned.is_some(), |cell| {
+                                    cell.text_color(rgb(theme::YELLOW))
+                                })
+                                .when(known, |cell| {
+                                    cell.cursor_pointer()
+                                        .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                                        .on_click(cx.listener({
+                                            let time = time.clone();
+                                            move |this, _event, window, cx| {
+                                                this.edit(geonameid, time.clone(), window, cx)
+                                            }
+                                        }))
+                                })
+                                .child(time.clone()),
+                        )
                         .into_any_element(),
                 })
                 .child(
