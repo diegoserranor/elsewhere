@@ -185,7 +185,19 @@ impl Elsewhere {
                         )
                         .child("⠿")
                 }))
-                .child(div().flex_1().text_color(rgb(theme::SUBTEXT0)).child(label))
+                // `flex_1` on its own is not enough: a flex item's automatic
+                // minimum is its own content, so a long label would hold the
+                // row open and shove the time and the x past the right edge.
+                // `min_w_0` lets the label give way instead, and truncate ends
+                // it in an ellipsis rather than wrapping out of the row.
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_color(rgb(theme::SUBTEXT0))
+                        .child(label),
+                )
                 .children(
                     day.map(|day| div().text_xs().text_color(rgb(theme::OVERLAY0)).child(day)),
                 )
