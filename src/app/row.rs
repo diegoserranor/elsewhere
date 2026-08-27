@@ -120,8 +120,8 @@ impl Elsewhere {
                         .id(("grip", geonameid as usize))
                         .cursor_grab()
                         .text_color(rgb(theme::SUBTEXT0))
-                        .opacity(0.4)
-                        .group_hover(group, |style| style.opacity(1.))
+                        .opacity(0.)
+                        .group_hover(group.clone(), |style| style.opacity(1.))
                         .on_drag(
                             DragRow {
                                 geonameid,
@@ -181,6 +181,8 @@ impl Elsewhere {
                         .px_2()
                         .rounded_md()
                         .text_color(rgb(theme::RED))
+                        .opacity(0.)
+                        .group_hover(group, |style| style.opacity(1.))
                         .cursor_pointer()
                         .hover(|style| style.bg(rgb(theme::SURFACE0)))
                         .active(|style| style.opacity(0.8))
