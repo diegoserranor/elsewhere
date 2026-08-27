@@ -192,6 +192,9 @@ impl Render for SearchPicker {
                                                 .px_2()
                                                 .py_1()
                                                 .rounded_md()
+                                                // One line per result, however
+                                                // long the label runs.
+                                                .truncate()
                                                 .cursor_pointer()
                                                 // The keyboard highlight wears
                                                 // the hover look, held on.
