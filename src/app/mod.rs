@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use gpui::{
-    Context, Entity, ScrollHandle, SharedString, Task, Window, actions, div, prelude::*, rgb,
+    Context, Entity, ScrollHandle, SharedString, Task, Window, actions, div, prelude::*, px, rgb,
 };
 use jiff::Zoned;
 
@@ -206,7 +206,9 @@ impl Render for Elsewhere {
                                 list.child(self.render_drop_tail(cx))
                             }),
                     )
-                    .child(scrollbar(&self.saved_scroll)),
+                    // Hung out in the window padding, clear of the delete
+                    // column the rows end in.
+                    .child(scrollbar(&self.saved_scroll, px(-6.))),
             )
     }
 }

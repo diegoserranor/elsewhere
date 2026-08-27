@@ -173,7 +173,7 @@ impl Render for SearchPicker {
                                 this.dismiss(cx)
                             },
                         ))
-                        .child(scrollbar(&self.scroll))
+                        .child(scrollbar(&self.scroll, px(2.)))
                         .child(
                             div()
                                 .id("results")

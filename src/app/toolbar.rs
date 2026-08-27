@@ -23,7 +23,9 @@ impl Elsewhere {
             .children(self.pinned.is_some().then(|| {
                 div()
                     .id("unpin")
-                    .px_2()
+                    // The same wrap the time pill wears, so at rest the text
+                    // sits where the digits do.
+                    .px_1()
                     .text_xs()
                     .rounded_md()
                     .cursor_pointer()
@@ -35,7 +37,7 @@ impl Elsewhere {
             .children((self.saved.len() > 1).then(|| {
                 div()
                     .id("westward")
-                    .px_2()
+                    .px_1()
                     .text_xs()
                     .rounded_md()
                     .cursor_pointer()
