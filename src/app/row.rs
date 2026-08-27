@@ -1,4 +1,6 @@
-use gpui::{Context, Entity, Focusable, Pixels, Window, div, prelude::*, px, rgb};
+use gpui::{
+    App, Context, Entity, Focusable, Pixels, SharedString, Window, div, prelude::*, px, rgb,
+};
 use jiff::Zoned;
 
 use super::drag::{DragRow, drop_target};
@@ -11,6 +13,33 @@ use crate::vendor::text_input::TextInput;
 /// Width of the time column. Fixed so the reading and the what-if editor
 /// occupy the same box, and so a row does not reflow as its digits change.
 const TIME_WIDTH: Pixels = px(64.);
+
+/// Mono faces for the time column, best first. Equal-width digits keep a
+/// reading from shifting as it ticks, which tabular figures would also do,
+/// except that `tnum` is missing from several of the sans faces gpui falls
+/// back to and there is no way to ask for the feature without naming a family
+/// anyway.
+const MONO: [&str; 8] = [
+    "JetBrains Mono",
+    "IBM Plex Mono",
+    "SF Mono",
+    "Menlo",
+    "Cascadia Mono",
+    "Adwaita Mono",
+    "DejaVu Sans Mono",
+    "Liberation Mono",
+];
+
+/// Settles on the time column's face once, at startup. gpui matches a family
+/// name exactly and quietly drops back to the UI font when it misses, so the
+/// list is checked against what the system actually carries. `None` leaves the
+/// column proportional, which is no worse than not asking.
+pub(super) fn mono(cx: &App) -> Option<SharedString> {
+    let installed = cx.text_system().all_font_names();
+    MONO.iter()
+        .find(|family| installed.iter().any(|name| name == *family))
+        .map(|family| SharedString::from(*family))
+}
 
 impl Elsewhere {
     fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
@@ -162,6 +191,7 @@ impl Elsewhere {
                         .on_action(cx.listener(Self::commit))
                         .on_action(cx.listener(Self::cancel))
                         .w(TIME_WIDTH)
+                        .when_some(self.mono.clone(), Styled::font_family)
                         .child(input.clone())
                         .into_any_element(),
                     _ => div()
@@ -172,6 +202,7 @@ impl Elsewhere {
                         // Right-aligned so the units line up down the column,
                         // whatever the hour's digit count.
                         .text_right()
+                        .when_some(self.mono.clone(), Styled::font_family)
                         .when(self.pinned.is_some(), |cell| {
                             cell.text_color(rgb(theme::YELLOW))
                         })
