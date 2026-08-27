@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use gpui::{Context, Entity, ScrollHandle, Task, Window, actions, div, prelude::*, rgb};
+use gpui::{
+    Context, Entity, ScrollHandle, SharedString, Task, Window, actions, div, prelude::*, rgb,
+};
 use jiff::Zoned;
 
 mod drag;
@@ -44,6 +46,8 @@ pub struct Elsewhere {
     /// Where the saved list has scrolled to. Doubles as the list's on-screen
     /// bounds, which the scrollbar reads.
     saved_scroll: ScrollHandle,
+    /// The mono face the time column reads in, if the system has one.
+    mono: Option<SharedString>,
     /// The clock, kept alive for as long as the window is.
     _tick: Task<()>,
 }
@@ -75,6 +79,7 @@ impl Elsewhere {
             pinned: None,
             editing: None,
             saved_scroll: ScrollHandle::new(),
+            mono: row::mono(cx),
             _tick: tick(cx),
         }
     }
