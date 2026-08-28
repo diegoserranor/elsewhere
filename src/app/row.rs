@@ -153,14 +153,15 @@ impl Elsewhere {
                 .flex_row()
                 .gap_2()
                 .items_center()
+                // The transparent border is dressed on in either view, so an
+                // insertion line costs no layout and toggling the order does
+                // not lift the rows by its width. Only the drop itself is
+                // withheld from the westward order, which does not reorder.
+                .map(drop_target)
                 .when(!self.westward, |row| {
-                    // The border is always there, so an insertion line
-                    // costs no layout.
-                    drop_target(row).on_drop(cx.listener(
-                        move |this, row: &DragRow, _window, cx| {
-                            this.drop(row.geonameid, Some(geonameid), cx)
-                        },
-                    ))
+                    row.on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
+                        this.drop(row.geonameid, Some(geonameid), cx)
+                    }))
                 })
                 .when(dragging && self.drag == Some(geonameid), |row| {
                     row.opacity(0.4)
