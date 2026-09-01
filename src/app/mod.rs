@@ -223,7 +223,7 @@ impl Render for Elsewhere {
                     .flex()
                     .flex_col()
                     .mr(row::GUTTER)
-                    .child(self.render_footer(cx)),
+                    .child(self.render_footer(dragging, cx)),
             )
     }
 }
