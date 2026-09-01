@@ -6,10 +6,10 @@ use gpui::{
 use jiff::Zoned;
 
 mod drag;
+mod footer;
 mod row;
 mod scrollbar;
 pub(crate) mod search;
-mod toolbar;
 
 use crate::cities;
 use crate::clock;
@@ -164,23 +164,14 @@ impl Render for Elsewhere {
             .bg(rgb(theme::BASE))
             .text_color(rgb(theme::TEXT))
             // Both are inset by a row's gutter on the right, so the search bar
-            // and the toolbar end where the times do. The list below keeps the
-            // full width: its gutter is the delete column.
+            // and the footer end where the times do. The list between keeps
+            // the full width: its gutter is the delete column.
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .mr(row::GUTTER)
                     .child(self.picker.clone()),
-            )
-            .children(
-                (self.saved.len() > 1 || self.pinned.is_some()).then(|| {
-                    div()
-                        .flex()
-                        .flex_col()
-                        .mr(row::GUTTER)
-                        .child(self.render_toolbar(cx))
-                }),
             )
             // The rows scroll on their own, so the input and toolbar above stay
             // put however long the list grows. `min_h_0` is what lets this flex
@@ -209,6 +200,13 @@ impl Render for Elsewhere {
                     // Hung out in the window padding, clear of the delete
                     // column the rows end in.
                     .child(scrollbar(&self.saved_scroll, px(-6.))),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .mr(row::GUTTER)
+                    .child(self.render_footer(cx)),
             )
     }
 }
