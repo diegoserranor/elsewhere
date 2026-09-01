@@ -163,14 +163,14 @@ impl Render for Elsewhere {
             .p_4()
             .bg(rgb(theme::BASE))
             .text_color(rgb(theme::TEXT))
-            // Both are inset by a row's gutter, so the search bar starts where
-            // the labels do and the toolbar ends where the times do. The list
-            // below keeps the full width: its gutters are the hover controls.
+            // Both are inset by a row's gutter on the right, so the search bar
+            // and the toolbar end where the times do. The list below keeps the
+            // full width: its gutter is the delete column.
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .mx(row::GUTTER)
+                    .mr(row::GUTTER)
                     .child(self.picker.clone()),
             )
             .children(
@@ -178,7 +178,7 @@ impl Render for Elsewhere {
                     div()
                         .flex()
                         .flex_col()
-                        .mx(row::GUTTER)
+                        .mr(row::GUTTER)
                         .child(self.render_toolbar(cx))
                 }),
             )

@@ -1,5 +1,5 @@
 use gpui::{
-    App, Context, Entity, Focusable, Pixels, SharedString, Window, div, prelude::*, px, rgb,
+    App, Context, Entity, Focusable, Pixels, SharedString, Window, div, prelude::*, px, rgb, rgba,
 };
 use jiff::Zoned;
 
@@ -20,16 +20,19 @@ const TIME_WIDTH: Pixels = px(64.);
 /// than its text needs as a result; the honest fix is a shorter input.
 const TIME_HEIGHT: Pixels = px(36.);
 
-/// Width of the cell a hover control sits in — the grip and the x. The
-/// controls are invisible at rest but their cells are not, so the labels and
-/// the times keep a column of their own between the two whatever the pointer
+/// Width of the cell the delete x sits in. The x is invisible at rest but its
+/// cell is not, so the times keep a column of their own whatever the pointer
 /// is doing.
 const CONTROL_WIDTH: Pixels = px(24.);
 
-/// How far the search bar and the toolbar are inset to meet that column: a
-/// control's cell plus the row's `gap_2` beside it. Spelled out because
+/// How far the search bar and the footer are inset on the right to meet that
+/// column: the x's cell plus the row's `gap_2` beside it. Spelled out because
 /// `Pixels` does not add in a const.
 pub(super) const GUTTER: Pixels = px(32.);
+
+/// How far a row's hover wash reaches into the window padding, so the label
+/// does not sit flush against the wash's edge.
+const WASH: Pixels = px(8.);
 
 /// Mono faces for the time column, best first. Equal-width digits keep a
 /// reading from shifting as it ticks, which tabular figures would also do,
@@ -147,44 +150,25 @@ impl Elsewhere {
         };
         let group = format!("saved-{geonameid}");
         Some(
-            div()
+            // The transparent border is dressed on in either view, so an
+            // insertion line costs no layout and toggling the order does not
+            // lift the rows by its width. Only the drag itself is withheld
+            // from the westward order, which does not reorder.
+            drop_target(div())
+                .id(("row", geonameid as usize))
                 .group(group.clone())
                 .flex()
                 .flex_row()
                 .gap_2()
                 .items_center()
-                // The transparent border is dressed on in either view, so an
-                // insertion line costs no layout and toggling the order does
-                // not lift the rows by its width. Only the drop itself is
-                // withheld from the westward order, which does not reorder.
-                .map(drop_target)
+                .ml(-WASH)
+                .pl(WASH)
+                .rounded_md()
+                .hover(|style| style.bg(rgba(theme::WASH)))
                 .when(!self.westward, |row| {
-                    row.on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
-                        this.drop(row.geonameid, Some(geonameid), cx)
-                    }))
-                })
-                .when(dragging && self.drag == Some(geonameid), |row| {
-                    row.opacity(0.4)
-                })
-                // The cell is there in either view, holding an inert spacer
-                // where the westward order has nothing to drag, so that
-                // toggling the order does not slide the labels sideways.
-                .child(if self.westward {
-                    div().w(CONTROL_WIDTH).into_any_element()
-                } else {
-                    div()
-                        .id(("grip", geonameid as usize))
-                        .w(CONTROL_WIDTH)
-                        .flex()
-                        .justify_center()
-                        .rounded_md()
-                        .cursor_grab()
-                        .text_color(rgb(theme::SUBTEXT0))
-                        // Hidden at rest, dim once the row is hovered, and
-                        // only full strength under the pointer itself.
-                        .opacity(0.)
-                        .group_hover(group.clone(), |style| style.opacity(0.5))
-                        .hover(|style| style.opacity(1.).bg(rgb(theme::SURFACE0)))
+                    // The whole row is the handle: there is no grip to find,
+                    // and the cursor says so on hover.
+                    row.cursor_grab()
                         .on_drag(
                             DragRow {
                                 geonameid,
@@ -202,8 +186,12 @@ impl Elsewhere {
                                 }
                             },
                         )
-                        .child("⠿")
-                        .into_any_element()
+                        .on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
+                            this.drop(row.geonameid, Some(geonameid), cx)
+                        }))
+                })
+                .when(dragging && self.drag == Some(geonameid), |row| {
+                    row.opacity(0.4)
                 })
                 // `flex_1` on its own is not enough: a flex item's automatic
                 // minimum is its own content, so a long label would hold the
