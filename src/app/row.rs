@@ -62,7 +62,7 @@ pub(super) fn mono(cx: &App) -> Option<SharedString> {
 }
 
 impl Elsewhere {
-    fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
         self.saved.retain(|id| *id != geonameid);
         saved::save(&self.saved);
         if self
