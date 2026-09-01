@@ -20,7 +20,11 @@ pub(crate) const SUBTEXT0: u32 = 0xa6adc8;
 pub(crate) const TEXT: u32 = 0xcdd6f4;
 /// Destructive: the delete x.
 pub(crate) const RED: u32 = 0xf38ba8;
-/// A what-if time is in effect: pinned readings, "back to now".
+/// A what-if time is in effect: pinned readings, the banner.
 pub(crate) const YELLOW: u32 = 0xf9e2af;
+/// The banner's fill and edge: the same yellow, faint and less faint. Both
+/// carry their alpha, so call sites wrap them in `rgba()`.
+pub(crate) const YELLOW_TINT: u32 = 0xf9e2af14;
+pub(crate) const YELLOW_EDGE: u32 = 0xf9e2af40;
 /// Active: the westward toggle on, the drag insertion line.
 pub(crate) const BLUE: u32 = 0x89b4fa;
