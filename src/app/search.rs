@@ -107,6 +107,11 @@ impl SearchPicker {
     }
 
     fn clear(&mut self, _: &Clear, _window: &mut Window, cx: &mut Context<Self>) {
+        // Nothing here to clear: let the window have the key instead.
+        if self.query.is_empty() && self.results.is_empty() {
+            cx.propagate();
+            return;
+        }
         self.reset(cx);
         cx.notify();
     }

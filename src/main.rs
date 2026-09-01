@@ -21,6 +21,7 @@ fn main() {
             KeyBinding::new("escape", app::search::Clear, Some("SearchPicker")),
             KeyBinding::new("up", app::search::MoveUp, Some("SearchPicker")),
             KeyBinding::new("down", app::search::MoveDown, Some("SearchPicker")),
+            KeyBinding::new("escape", app::Unpin, Some("Elsewhere")),
         ]);
 
         let bounds = Bounds::centered(None, size(px(400.), px(300.)), cx);

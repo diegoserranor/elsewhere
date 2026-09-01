@@ -4,7 +4,7 @@ use gpui::{
 use jiff::Zoned;
 
 use super::drag::{DragRow, drop_target};
-use super::{Cancel, Commit, Elsewhere};
+use super::{Cancel, Commit, Elsewhere, Pin};
 use crate::clock;
 use crate::saved;
 use crate::theme;
@@ -104,7 +104,10 @@ impl Elsewhere {
             && let Some(zone) = self.zones.get(&city.timezone)
             && let Some(pinned) = clock::pin(input.read(cx).text(), zone, &Zoned::now())
         {
-            self.pinned = Some(pinned);
+            self.pinned = Some(Pin {
+                anchor: *geonameid,
+                at: pinned,
+            });
             cx.notify();
         }
     }

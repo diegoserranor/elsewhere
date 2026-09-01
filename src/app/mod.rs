@@ -24,6 +24,18 @@ use search::{SearchEvent, SearchPicker};
 // bubble up to the wrapper div carrying the "PinEditor" context.
 actions!(pin_editor, [Commit, Cancel]);
 
+// Escape from anywhere in the window: back to the live clock. The search
+// picker lets it through only when it has nothing of its own to clear.
+actions!(elsewhere, [Unpin]);
+
+/// A what-if time in effect.
+pub(crate) struct Pin {
+    /// The row the time was typed into, by geonameid.
+    pub(crate) anchor: u32,
+    /// The instant every row reads from, held in home's zone.
+    pub(crate) at: Zoned,
+}
+
 pub struct Elsewhere {
     /// The search region, which owns its input and results and reports a choice
     /// back as a `SearchEvent`.
@@ -38,9 +50,8 @@ pub struct Elsewhere {
     /// Whether the list is shown ordered by longitude rather than by hand. A
     /// view preference, deliberately not persisted.
     westward: bool,
-    /// The instant every row reads from while a what-if time is set, held in
-    /// home's zone. `None` means the rows follow the real clock.
-    pinned: Option<Zoned>,
+    /// The what-if time in effect. `None` means the rows follow the real clock.
+    pinned: Option<Pin>,
     /// The row whose time is being typed over, and the input doing it.
     editing: Option<(u32, Entity<TextInput>)>,
     /// Where the saved list has scrolled to. Doubles as the list's on-screen
@@ -139,7 +150,10 @@ impl Render for Elsewhere {
         // One reading of the clock for the whole pass, so the rows agree. A
         // pinned instant stands in for the clock wholesale, which is the whole
         // feature: every row simply renders that moment instead of this one.
-        let now = self.pinned.clone().unwrap_or_else(Zoned::now);
+        let now = self
+            .pinned
+            .as_ref()
+            .map_or_else(Zoned::now, |pin| pin.at.clone());
         // The westward view is derived here and nowhere else: the stored order
         // stays the one the user arranged by hand.
         let order: Vec<u32> = if self.westward {
@@ -156,6 +170,8 @@ impl Render for Elsewhere {
             self.saved.clone()
         };
         div()
+            .key_context("Elsewhere")
+            .on_action(cx.listener(|this, _: &Unpin, window, cx| this.unpin(window, cx)))
             .size_full()
             .flex()
             .flex_col()
@@ -173,6 +189,7 @@ impl Render for Elsewhere {
                     .mr(row::GUTTER)
                     .child(self.picker.clone()),
             )
+            .children(self.render_banner(&now, cx))
             // The rows scroll on their own, so the input and toolbar above stay
             // put however long the list grows. `min_h_0` is what lets this flex
             // child shrink below its content and actually overflow.
