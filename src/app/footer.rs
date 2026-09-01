@@ -14,31 +14,32 @@ impl Elsewhere {
         cx.notify();
     }
 
-    pub(super) fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The strip along the bottom: a slot on the left for whatever the moment
+    /// calls for, view preferences on the right. It is always there, at a
+    /// fixed height, so the list above never shifts as controls come and go.
+    pub(super) fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_row()
-            .justify_end()
-            .gap_2()
-            .children(self.pinned.is_some().then(|| {
+            .justify_between()
+            .items_center()
+            .h_5()
+            .text_xs()
+            .child(div().children(self.pinned.is_some().then(|| {
                 div()
                     .id("unpin")
-                    // The same wrap the time pill wears, so at rest the text
-                    // sits where the digits do.
                     .px_1()
-                    .text_xs()
                     .rounded_md()
                     .cursor_pointer()
                     .text_color(rgb(theme::YELLOW))
                     .hover(|style| style.bg(rgb(theme::SURFACE0)))
                     .on_click(cx.listener(|this, _event, window, cx| this.unpin(window, cx)))
                     .child("back to now")
-            }))
-            .children((self.saved.len() > 1).then(|| {
+            })))
+            .child(div().children((self.saved.len() > 1).then(|| {
                 div()
                     .id("westward")
                     .px_1()
-                    .text_xs()
                     .rounded_md()
                     .cursor_pointer()
                     .text_color(if self.westward {
@@ -49,6 +50,6 @@ impl Elsewhere {
                     .hover(|style| style.bg(rgb(theme::SURFACE0)))
                     .on_click(cx.listener(|this, _event, _window, cx| this.toggle_westward(cx)))
                     .child("west → east")
-            }))
+            })))
     }
 }
