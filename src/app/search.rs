@@ -198,7 +198,14 @@ impl Render for SearchPicker {
                                                 .py_1()
                                                 .rounded_md()
                                                 // One line per result, however
-                                                // long the label runs.
+                                                // long the label runs. The
+                                                // overflow that truncating
+                                                // hides also lets a flex item
+                                                // shrink below its content, so
+                                                // in a short window the rows
+                                                // would squash to fit instead
+                                                // of scrolling.
+                                                .flex_shrink_0()
                                                 .truncate()
                                                 .cursor_pointer()
                                                 // The keyboard highlight wears
