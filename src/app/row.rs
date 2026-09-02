@@ -12,7 +12,10 @@ use crate::vendor::text_input::TextInput;
 
 /// Width of the time column. Fixed so the reading and the what-if editor
 /// occupy the same box, and so a row does not reflow as its digits change.
-const TIME_WIDTH: Pixels = px(64.);
+/// Sized to five glyphs of a 0.6em mono at 16px plus the vendored input's
+/// 6px of padding either side, so the editor hugs the digits rather than
+/// leaving slack on its right; every face on the mono list is that width.
+const TIME_WIDTH: Pixels = px(60.);
 
 /// Height of the time column, and with it the row. This is the box the
 /// vendored input renders at, reserved whether or not the editor is open, so
@@ -236,7 +239,9 @@ impl Elsewhere {
                                 .h_full()
                                 .flex()
                                 .items_center()
-                                .px_1()
+                                // The vendored input's inset, so the digits
+                                // hold still when the editor opens.
+                                .px(px(6.))
                                 .rounded_md()
                                 .when_some(self.mono.clone(), Styled::font_family)
                                 .when(self.pinned.is_some(), |cell| {
