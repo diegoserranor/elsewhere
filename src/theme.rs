@@ -18,13 +18,12 @@ pub(crate) const OVERLAY0: u32 = 0x6c7086;
 pub(crate) const SUBTEXT0: u32 = 0xa6adc8;
 /// The default text color.
 pub(crate) const TEXT: u32 = 0xcdd6f4;
-/// Destructive: the bin, with a row over it.
-pub(crate) const RED: u32 = 0xf38ba8;
 /// A what-if time is in effect: pinned readings, the banner.
 pub(crate) const YELLOW: u32 = 0xf9e2af;
 /// The banner's fill and edge: the same yellow, faint and less faint. Both
 /// carry their alpha, so call sites wrap them in `rgba()`.
 pub(crate) const YELLOW_TINT: u32 = 0xf9e2af14;
 pub(crate) const YELLOW_EDGE: u32 = 0xf9e2af40;
-/// Active: the westward toggle on, the drag insertion line.
+/// Active: the westward toggle on, the drag insertion line, the bin with a
+/// row over it.
 pub(crate) const BLUE: u32 = 0x89b4fa;
