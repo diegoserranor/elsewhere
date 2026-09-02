@@ -1,4 +1,4 @@
-use gpui::{Context, Window, div, prelude::*, rgb, rgba, svg};
+use gpui::{Context, Window, div, prelude::*, rgb, rgba, svg, transparent_black};
 use jiff::Zoned;
 
 use super::Elsewhere;
@@ -72,7 +72,8 @@ impl Elsewhere {
     }
 
     /// Where a dragged row goes to be deleted. Dashed at rest so it reads as a
-    /// place to drop rather than a button, red once the row is over it.
+    /// place to drop rather than a button, lit in the accent once the row is
+    /// over it.
     fn render_bin(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("bin")
@@ -86,7 +87,9 @@ impl Elsewhere {
             .border_dashed()
             .border_color(rgb(theme::OVERLAY0))
             .drag_over::<DragRow>(|style, _, _, _| {
-                style.border_color(rgb(theme::RED)).bg(rgb(theme::SURFACE0))
+                style
+                    .border_color(rgb(theme::BLUE))
+                    .bg(rgb(theme::SURFACE0))
             })
             .on_drop(
                 cx.listener(|this, row: &DragRow, window, cx| {
@@ -100,7 +103,7 @@ impl Elsewhere {
                     // An svg paints only in a color set on itself; the
                     // parent's does not reach it.
                     .text_color(rgb(theme::SUBTEXT0))
-                    .drag_over::<DragRow>(|style, _, _, _| style.text_color(rgb(theme::RED))),
+                    .drag_over::<DragRow>(|style, _, _, _| style.text_color(rgb(theme::BLUE))),
             )
     }
 
@@ -125,6 +128,10 @@ impl Elsewhere {
                     .items_center()
                     .justify_center()
                     .rounded_md()
+                    // An invisible border, so the icon sits in the same
+                    // content box as the bin's does inside its dashed one.
+                    .border_1()
+                    .border_color(transparent_black())
                     .cursor_pointer()
                     .hover(|style| style.bg(rgb(theme::SURFACE0)))
                     .tooltip(Tooltip::text(if self.westward {
