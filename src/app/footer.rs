@@ -1,11 +1,41 @@
-use gpui::{Context, Window, div, prelude::*, rgb, rgba, svg, transparent_black};
+use gpui::{Context, Pixels, Window, div, prelude::*, px, rgb, rgba, svg, transparent_black};
 use jiff::Zoned;
 
 use super::Elsewhere;
 use super::drag::DragRow;
 use super::tooltip::Tooltip;
-use crate::clock;
+use crate::clock::{self, Format};
 use crate::theme;
+
+/// A view preference the footer offers as an icon that is lit while on.
+struct Toggle {
+    id: &'static str,
+    icon: &'static str,
+    /// The icon's own size, since glyphs fill their box unevenly: a circle
+    /// runs edge to edge where the signpost leaves a margin, so drawn equal
+    /// it looks bigger.
+    size: Pixels,
+    /// The tooltip, while off and while on.
+    tips: [&'static str; 2],
+    /// A plain fn, so the element can outlive the borrow that built it.
+    click: fn(&mut Elsewhere, &mut Context<Elsewhere>),
+}
+
+const FORMAT: Toggle = Toggle {
+    id: "format",
+    icon: "icons/clock-12.svg",
+    size: px(14.),
+    tips: ["show 12-hour time", "showing 12-hour time"],
+    click: Elsewhere::toggle_format,
+};
+
+const WESTWARD: Toggle = Toggle {
+    id: "westward",
+    icon: "icons/milestone.svg",
+    size: px(16.),
+    tips: ["order west to east", "ordered west to east"],
+    click: Elsewhere::toggle_westward,
+};
 
 impl Elsewhere {
     pub(super) fn unpin(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -16,6 +46,59 @@ impl Elsewhere {
     fn toggle_westward(&mut self, cx: &mut Context<Self>) {
         self.westward = !self.westward;
         cx.notify();
+    }
+
+    fn toggle_format(&mut self, cx: &mut Context<Self>) {
+        self.format = match self.format {
+            Format::TwentyFour => Format::Twelve,
+            Format::Twelve => Format::TwentyFour,
+        };
+        cx.notify();
+    }
+
+    /// A footer toggle: an icon in the same box as the bin, lit in the accent
+    /// while on, with a tooltip saying what it does.
+    fn render_toggle(
+        &self,
+        toggle: &Toggle,
+        on: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let Toggle {
+            id,
+            icon,
+            size,
+            tips,
+            click,
+        } = *toggle;
+        div()
+            .id(id)
+            .w_7()
+            .h_5()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_md()
+            // An invisible border, so the icon sits in the same content box
+            // as the bin's does inside its dashed one.
+            .border_1()
+            .border_color(transparent_black())
+            .cursor_pointer()
+            .hover(|style| style.bg(rgb(theme::SURFACE0)))
+            .tooltip(Tooltip::text(tips[on as usize]))
+            .on_click(cx.listener(move |this, _event, _window, cx| click(this, cx)))
+            .child(
+                svg()
+                    .path(icon)
+                    .size(size)
+                    // An svg paints only in a color set on itself; the
+                    // parent's does not reach it.
+                    .text_color(if on {
+                        rgb(theme::BLUE)
+                    } else {
+                        rgb(theme::OVERLAY0)
+                    }),
+            )
     }
 
     /// The strip under the search that says a what-if time is in force: which
@@ -31,7 +114,7 @@ impl Elsewhere {
         let time = self
             .zones
             .get(&city.timezone)
-            .map(|zone| clock::reading(now, zone).time)
+            .map(|zone| clock::reading(now, zone, self.format).time)
             .unwrap_or_else(|| clock::UNKNOWN.to_string());
         Some(
             div()
@@ -119,39 +202,20 @@ impl Elsewhere {
             .h_5()
             .text_xs()
             .child(div().children((dragging && self.drag.is_some()).then(|| self.render_bin(cx))))
-            .child(div().children((self.saved.len() > 1).then(|| {
+            .child(
                 div()
-                    .id("westward")
-                    .w_7()
-                    .h_5()
                     .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_md()
-                    // An invisible border, so the icon sits in the same
-                    // content box as the bin's does inside its dashed one.
-                    .border_1()
-                    .border_color(transparent_black())
-                    .cursor_pointer()
-                    .hover(|style| style.bg(rgb(theme::SURFACE0)))
-                    .tooltip(Tooltip::text(if self.westward {
-                        "ordered west to east"
-                    } else {
-                        "order west to east"
-                    }))
-                    .on_click(cx.listener(|this, _event, _window, cx| this.toggle_westward(cx)))
-                    .child(
-                        svg()
-                            .path("icons/milestone.svg")
-                            .size_3p5()
-                            // An svg paints only in a color set on itself; the
-                            // parent's does not reach it.
-                            .text_color(if self.westward {
-                                rgb(theme::BLUE)
-                            } else {
-                                rgb(theme::OVERLAY0)
-                            }),
+                    .flex_row()
+                    .gap_1()
+                    .children(
+                        (!self.saved.is_empty()).then(|| {
+                            self.render_toggle(&FORMAT, self.format == Format::Twelve, cx)
+                        }),
                     )
-            })))
+                    .children(
+                        (self.saved.len() > 1)
+                            .then(|| self.render_toggle(&WESTWARD, self.westward, cx)),
+                    ),
+            )
     }
 }
