@@ -20,8 +20,11 @@ const TIME_WIDTH: Pixels = px(64.);
 /// than its text needs as a result; the honest fix is a shorter input.
 const TIME_HEIGHT: Pixels = px(36.);
 
-/// How far a row's hover wash reaches into the window padding, so the label
-/// does not sit flush against the wash's edge.
+/// The row's left inset, so the label does not sit flush against the hover
+/// wash's edge. The wash itself starts at the column edge, in line with the
+/// search bar: it cannot hang out into the window padding, because the list
+/// is a scroll container and clips to its own bounds on both axes, which
+/// would square off the row's left corners.
 const WASH: Pixels = px(8.);
 
 /// Mono faces for the time column, best first. Equal-width digits keep a
@@ -153,7 +156,6 @@ impl Elsewhere {
                 .flex_row()
                 .gap_2()
                 .items_center()
-                .ml(-WASH)
                 .pl(WASH)
                 .rounded_md()
                 .hover(|style| style.bg(rgba(theme::WASH)))
