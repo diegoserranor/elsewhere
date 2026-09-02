@@ -25,13 +25,16 @@ impl Render for DragRow {
 }
 
 /// Dresses an element as a landing place for a dragged row: a transparent top
-/// border that lights up as the insertion line. The caller attaches the
-/// `on_drop` that says where the row lands.
-pub(super) fn drop_target(element: Div) -> Div {
+/// border that lights up as the insertion line while `open`. The caller
+/// attaches the `on_drop` that says where the row lands. Closed, the border
+/// is still worn, so the layout does not change with the view.
+pub(super) fn drop_target(element: Div, open: bool) -> Div {
     element
         .border_t_2()
         .border_color(transparent_black())
-        .drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(theme::BLUE)))
+        .when(open, |element| {
+            element.drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(theme::BLUE)))
+        })
 }
 
 impl Elsewhere {
@@ -46,7 +49,7 @@ impl Elsewhere {
 
     /// The space below the list catches a drop meant for the end.
     pub(super) fn render_drop_tail(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        drop_target(div().flex_1().min_h_4()).on_drop(
+        drop_target(div().flex_1().min_h_4(), true).on_drop(
             cx.listener(|this, row: &DragRow, _window, cx| this.drop(row.geonameid, None, cx)),
         )
     }

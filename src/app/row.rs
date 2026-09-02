@@ -144,9 +144,10 @@ impl Elsewhere {
         Some(
             // The transparent border is dressed on in either view, so an
             // insertion line costs no layout and toggling the order does not
-            // lift the rows by its width. Only the drag itself is withheld
-            // from the westward order, which does not reorder.
-            drop_target(div())
+            // lift the rows by its width. The line lights up, and a drop
+            // lands, only in the hand-arranged order; the westward order does
+            // not reorder, but a row can still be dragged out of it to the bin.
+            drop_target(div(), !self.westward)
                 .id(("row", geonameid as usize))
                 .flex()
                 .flex_row()
@@ -156,35 +157,35 @@ impl Elsewhere {
                 .pl(WASH)
                 .rounded_md()
                 .hover(|style| style.bg(rgba(theme::WASH)))
+                // The whole row is the handle: there is no grip to find, and
+                // the cursor says so on hover.
+                .cursor_grab()
+                .on_drag(
+                    DragRow {
+                        geonameid,
+                        label: label.clone(),
+                    },
+                    {
+                        let this = cx.weak_entity();
+                        move |row: &DragRow, _position, _window, cx| {
+                            // The bin and the drop tail appear on the next
+                            // frame, so ask for one.
+                            this.update(cx, |this, cx| {
+                                this.drag = Some(row.geonameid);
+                                cx.notify();
+                            })
+                            .ok();
+                            cx.new(|_cx| DragRow {
+                                geonameid: row.geonameid,
+                                label: row.label.clone(),
+                            })
+                        }
+                    },
+                )
                 .when(!self.westward, |row| {
-                    // The whole row is the handle: there is no grip to find,
-                    // and the cursor says so on hover.
-                    row.cursor_grab()
-                        .on_drag(
-                            DragRow {
-                                geonameid,
-                                label: label.clone(),
-                            },
-                            {
-                                let this = cx.weak_entity();
-                                move |row: &DragRow, _position, _window, cx| {
-                                    // The bin and the drop tail appear on the
-                                    // next frame, so ask for one.
-                                    this.update(cx, |this, cx| {
-                                        this.drag = Some(row.geonameid);
-                                        cx.notify();
-                                    })
-                                    .ok();
-                                    cx.new(|_cx| DragRow {
-                                        geonameid: row.geonameid,
-                                        label: row.label.clone(),
-                                    })
-                                }
-                            },
-                        )
-                        .on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
-                            this.drop(row.geonameid, Some(geonameid), cx)
-                        }))
+                    row.on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
+                        this.drop(row.geonameid, Some(geonameid), cx)
+                    }))
                 })
                 .when(dragging && self.drag == Some(geonameid), |row| {
                     row.opacity(0.4)
