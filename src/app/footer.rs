@@ -84,19 +84,23 @@ impl Elsewhere {
             .border_1()
             .border_dashed()
             .border_color(rgb(theme::OVERLAY0))
-            .text_color(rgb(theme::SUBTEXT0))
             .drag_over::<DragRow>(|style, _, _, _| {
-                style
-                    .border_color(rgb(theme::RED))
-                    .text_color(rgb(theme::RED))
-                    .bg(rgb(theme::SURFACE0))
+                style.border_color(rgb(theme::RED)).bg(rgb(theme::SURFACE0))
             })
             .on_drop(
                 cx.listener(|this, row: &DragRow, window, cx| {
                     this.delete(row.geonameid, window, cx)
                 }),
             )
-            .child(svg().path("icons/trash.svg").size_3p5())
+            .child(
+                svg()
+                    .path("icons/trash.svg")
+                    .size_3p5()
+                    // An svg paints only in a color set on itself; the
+                    // parent's does not reach it.
+                    .text_color(rgb(theme::SUBTEXT0))
+                    .drag_over::<DragRow>(|style, _, _, _| style.text_color(rgb(theme::RED))),
+            )
     }
 
     /// The strip along the bottom: a bin on the left for as long as a row is

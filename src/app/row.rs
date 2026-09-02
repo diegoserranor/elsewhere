@@ -168,8 +168,13 @@ impl Elsewhere {
                             {
                                 let this = cx.weak_entity();
                                 move |row: &DragRow, _position, _window, cx| {
-                                    this.update(cx, |this, _cx| this.drag = Some(row.geonameid))
-                                        .ok();
+                                    // The bin and the drop tail appear on the
+                                    // next frame, so ask for one.
+                                    this.update(cx, |this, cx| {
+                                        this.drag = Some(row.geonameid);
+                                        cx.notify();
+                                    })
+                                    .ok();
                                     cx.new(|_cx| DragRow {
                                         geonameid: row.geonameid,
                                         label: row.label.clone(),
