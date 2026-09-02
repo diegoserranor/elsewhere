@@ -12,10 +12,13 @@ use crate::vendor::text_input::TextInput;
 
 /// Width of the time column. Fixed so the reading and the what-if editor
 /// occupy the same box, and so a row does not reflow as its digits change.
-/// Sized to five glyphs of a 0.6em mono at 16px plus the vendored input's
-/// 6px of padding either side, so the editor hugs the digits rather than
-/// leaving slack on its right; every face on the mono list is that width.
-const TIME_WIDTH: Pixels = px(60.);
+/// Sized to the format's longest reading in a 0.6em mono at 16px plus the
+/// vendored input's 6px of padding either side, so the editor hugs the digits
+/// rather than leaving slack on its right; every face on the mono list is
+/// that width.
+fn time_width(format: clock::Format) -> Pixels {
+    px(format.glyphs() as f32 * 9.6 + 12.)
+}
 
 /// Height of the time column, and with it the row. This is the box the
 /// vendored input renders at, reserved whether or not the editor is open, so
@@ -140,7 +143,7 @@ impl Elsewhere {
         let reading = self
             .zones
             .get(&city.timezone)
-            .map(|zone| clock::reading(now, zone));
+            .map(|zone| clock::reading(now, zone, self.format));
         // Only a row whose zone resolved can anchor a pin.
         let known = reading.is_some();
         let (time, day) = match reading {
@@ -218,7 +221,7 @@ impl Elsewhere {
                         .key_context("PinEditor")
                         .on_action(cx.listener(Self::commit))
                         .on_action(cx.listener(Self::cancel))
-                        .w(TIME_WIDTH)
+                        .w(time_width(self.format))
                         .h(TIME_HEIGHT)
                         .when_some(self.mono.clone(), Styled::font_family)
                         .child(input.clone())
@@ -229,7 +232,7 @@ impl Elsewhere {
                     // It runs the cell's full height, so the hover look is the
                     // same box the editor opens into.
                     _ => div()
-                        .w(TIME_WIDTH)
+                        .w(time_width(self.format))
                         .h(TIME_HEIGHT)
                         .flex()
                         .justify_end()

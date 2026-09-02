@@ -51,6 +51,9 @@ pub struct Elsewhere {
     /// Whether the list is shown ordered by longitude rather than by hand. A
     /// view preference, deliberately not persisted.
     westward: bool,
+    /// How the times are written. Like `westward`, a view preference that is
+    /// not persisted.
+    format: clock::Format,
     /// The what-if time in effect. `None` means the rows follow the real clock.
     pinned: Option<Pin>,
     /// The row whose time is being typed over, and the input doing it.
@@ -88,6 +91,7 @@ impl Elsewhere {
             zones,
             drag: None,
             westward: false,
+            format: clock::Format::default(),
             pinned: None,
             editing: None,
             saved_scroll: ScrollHandle::new(),

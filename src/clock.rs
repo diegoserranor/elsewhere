@@ -8,10 +8,29 @@ use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use jiff::{Unit, Zoned};
 
+/// How a time is written: "21:34", or "9:34 pm".
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Format {
+    #[default]
+    TwentyFour,
+    Twelve,
+}
+
+impl Format {
+    /// The most glyphs a reading takes in this format: "21:34" against
+    /// "12:34 pm". A column sized to it never reflows as the digits change.
+    pub fn glyphs(self) -> usize {
+        match self {
+            Format::TwentyFour => 5,
+            Format::Twelve => 8,
+        }
+    }
+}
+
 /// What a saved row shows for one city.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Reading {
-    /// The local time as "HH:MM", 24-hour.
+    /// The local time, written in the requested `Format`.
     pub time: String,
     /// How the local date differs from home's, when it does.
     pub day: Option<String>,
@@ -26,10 +45,22 @@ pub const UNKNOWN: &str = "–:–";
 const PAD: Duration = Duration::from_millis(50);
 
 /// The reading for `zone` at the instant `now`, whose own zone is home.
-pub fn reading(now: &Zoned, zone: &TimeZone) -> Reading {
+pub fn reading(now: &Zoned, zone: &TimeZone, format: Format) -> Reading {
     let there = now.with_time_zone(zone.clone());
+    let (hour, minute) = (there.hour(), there.minute());
+    let time = match format {
+        Format::TwentyFour => format!("{hour:02}:{minute:02}"),
+        Format::Twelve => {
+            let half = if hour < 12 { "am" } else { "pm" };
+            let hour = match hour % 12 {
+                0 => 12,
+                hour => hour,
+            };
+            format!("{hour}:{minute:02} {half}")
+        }
+    };
     Reading {
-        time: format!("{:02}:{:02}", there.hour(), there.minute()),
+        time,
         day: day(now.date(), there.date()),
     }
 }
@@ -45,21 +76,44 @@ fn day(here: Date, there: Date) -> Option<String> {
     }
 }
 
-/// The instant at which `zone`'s wall clock reads `text` — "HH:MM", today over
-/// there — expressed in home's zone so day hints stay relative to home. `None`
-/// when the text does not read as such a time.
+/// The instant at which `zone`'s wall clock reads `text` — "HH:MM" or
+/// "h:mm am", today over there — expressed in home's zone so day hints stay
+/// relative to home. `None` when the text does not read as such a time.
+/// Either way of writing a time is accepted whatever the display format, so
+/// what was typed does not have to match what the row showed.
 pub fn pin(text: &str, zone: &TimeZone, now: &Zoned) -> Option<Zoned> {
-    let (hour, minute) = text.split_once(':')?;
-    let hour: i8 = hour.trim().parse().ok()?;
-    let minute: i8 = minute.trim().parse().ok()?;
-    if !(0..24).contains(&hour) || !(0..60).contains(&minute) {
-        return None;
-    }
+    let (hour, minute) = wall(text)?;
     let date = now.with_time_zone(zone.clone()).date();
     // A time skipped or repeated by a DST change resolves to jiff's compatible
     // choice rather than failing.
     let there = date.at(hour, minute, 0, 0).to_zoned(zone.clone()).ok()?;
     Some(there.with_time_zone(now.time_zone().clone()))
+}
+
+/// The hour and minute `text` names, as a 24-hour clock. A trailing "am" or
+/// "pm", in either case, with or without a space before it, makes the hour a
+/// 12-hour one; without it the hour is taken as written.
+fn wall(text: &str) -> Option<(i8, i8)> {
+    let text = text.trim().to_ascii_lowercase();
+    let (text, half) = match text.strip_suffix("am") {
+        Some(rest) => (rest, Some(false)),
+        None => match text.strip_suffix("pm") {
+            Some(rest) => (rest, Some(true)),
+            None => (text.as_str(), None),
+        },
+    };
+    let (hour, minute) = text.split_once(':')?;
+    let hour: i8 = hour.trim().parse().ok()?;
+    let minute: i8 = minute.trim().parse().ok()?;
+    let hour = match half {
+        None => hour,
+        Some(_) if !(1..=12).contains(&hour) => return None,
+        Some(pm) => hour % 12 + if pm { 12 } else { 0 },
+    };
+    if !(0..24).contains(&hour) || !(0..60).contains(&minute) {
+        return None;
+    }
+    Some((hour, minute))
 }
 
 /// How long to wait before the displayed minute changes.
@@ -117,31 +171,64 @@ mod tests {
     #[test]
     fn reads_the_time_in_another_zone() {
         let now = at("2026-08-15T12:34:56Z", "UTC");
-        assert_eq!(reading(&now, &zone("UTC")).time, "12:34");
+        assert_eq!(
+            reading(&now, &zone("UTC"), Format::TwentyFour).time,
+            "12:34"
+        );
         // +09:00, year round.
-        assert_eq!(reading(&now, &zone("Asia/Tokyo")).time, "21:34");
+        assert_eq!(
+            reading(&now, &zone("Asia/Tokyo"), Format::TwentyFour).time,
+            "21:34"
+        );
         // -07:00 in August.
-        assert_eq!(reading(&now, &zone("America/Los_Angeles")).time, "05:34");
+        assert_eq!(
+            reading(&now, &zone("America/Los_Angeles"), Format::TwentyFour).time,
+            "05:34"
+        );
     }
 
     #[test]
     fn pads_the_hour_and_the_minute() {
         let now = at("2026-08-15T09:05:00Z", "UTC");
-        assert_eq!(reading(&now, &zone("UTC")).time, "09:05");
-        assert_eq!(reading(&now, &zone("Europe/London")).time, "10:05");
+        assert_eq!(
+            reading(&now, &zone("UTC"), Format::TwentyFour).time,
+            "09:05"
+        );
+        assert_eq!(
+            reading(&now, &zone("Europe/London"), Format::TwentyFour).time,
+            "10:05"
+        );
+    }
+
+    #[test]
+    fn reads_a_twelve_hour_clock() {
+        for (instant, expected) in [
+            ("2026-08-15T00:05:00Z", "12:05 am"),
+            ("2026-08-15T09:05:00Z", "9:05 am"),
+            ("2026-08-15T11:59:00Z", "11:59 am"),
+            ("2026-08-15T12:00:00Z", "12:00 pm"),
+            ("2026-08-15T21:34:00Z", "9:34 pm"),
+            ("2026-08-15T23:59:00Z", "11:59 pm"),
+        ] {
+            let now = at(instant, "UTC");
+            assert_eq!(reading(&now, &zone("UTC"), Format::Twelve).time, expected);
+        }
     }
 
     #[test]
     fn the_same_date_needs_no_hint() {
         let now = at("2026-08-15T12:00:00Z", "UTC");
-        assert_eq!(reading(&now, &zone("Europe/Paris")).day, None);
+        assert_eq!(
+            reading(&now, &zone("Europe/Paris"), Format::TwentyFour).day,
+            None
+        );
     }
 
     #[test]
     fn a_zone_far_enough_east_is_a_day_ahead() {
         // 22:00 UTC is already the 16th at +14:00.
         let now = at("2026-08-15T22:00:00Z", "UTC");
-        let there = reading(&now, &zone("Pacific/Kiritimati"));
+        let there = reading(&now, &zone("Pacific/Kiritimati"), Format::TwentyFour);
         assert_eq!(there.time, "12:00");
         assert_eq!(there.day.as_deref(), Some("+1 day"));
     }
@@ -150,7 +237,7 @@ mod tests {
     fn a_zone_far_enough_west_is_a_day_behind() {
         // Just past midnight UTC is still the 14th in California.
         let now = at("2026-08-15T00:30:00Z", "UTC");
-        let there = reading(&now, &zone("America/Los_Angeles"));
+        let there = reading(&now, &zone("America/Los_Angeles"), Format::TwentyFour);
         assert_eq!(there.time, "17:30");
         assert_eq!(there.day.as_deref(), Some("−1 day"));
     }
@@ -162,16 +249,25 @@ mod tests {
         let now = at("2026-08-15T22:00:00Z", "Asia/Tokyo");
         assert_eq!(now.date().to_string(), "2026-08-16");
         assert_eq!(
-            reading(&now, &zone("Europe/London")).day.as_deref(),
+            reading(&now, &zone("Europe/London"), Format::TwentyFour)
+                .day
+                .as_deref(),
             Some("−1 day")
         );
-        assert_eq!(reading(&now, &zone("Pacific/Kiritimati")).day, None);
+        assert_eq!(
+            reading(&now, &zone("Pacific/Kiritimati"), Format::TwentyFour).day,
+            None
+        );
     }
 
     #[test]
     fn a_fixed_offset_zone_reads_the_same_way() {
         let now = at("2026-08-15T23:15:00Z", "UTC");
-        let there = reading(&now, &TimeZone::fixed(jiff::tz::offset(5)));
+        let there = reading(
+            &now,
+            &TimeZone::fixed(jiff::tz::offset(5)),
+            Format::TwentyFour,
+        );
         assert_eq!(there.time, "04:15");
         assert_eq!(there.day.as_deref(), Some("+1 day"));
     }
@@ -187,8 +283,14 @@ mod tests {
         // that morning in Tokyo was 00:30Z.
         let now = at("2026-08-15T12:00:00Z", "UTC");
         let pinned = pin("09:30", &zone("Asia/Tokyo"), &now).expect("a valid pin");
-        assert_eq!(reading(&pinned, &zone("Asia/Tokyo")).time, "09:30");
-        assert_eq!(reading(&pinned, &zone("UTC")).time, "00:30");
+        assert_eq!(
+            reading(&pinned, &zone("Asia/Tokyo"), Format::TwentyFour).time,
+            "09:30"
+        );
+        assert_eq!(
+            reading(&pinned, &zone("UTC"), Format::TwentyFour).time,
+            "00:30"
+        );
     }
 
     #[test]
@@ -197,7 +299,7 @@ mod tests {
         // 19:00Z on the 15th, so from home it reads as a day ahead.
         let now = at("2026-08-15T12:00:00Z", "UTC");
         let pinned = pin("09:00", &zone("Pacific/Kiritimati"), &now).expect("a valid pin");
-        let there = reading(&pinned, &zone("Pacific/Kiritimati"));
+        let there = reading(&pinned, &zone("Pacific/Kiritimati"), Format::TwentyFour);
         assert_eq!(there.time, "09:00");
         assert_eq!(there.day.as_deref(), Some("+1 day"));
     }
@@ -208,13 +310,38 @@ mod tests {
         // resolves to the other side of the gap instead of failing.
         let now = at("2026-03-08T12:00:00Z", "UTC");
         let pinned = pin("02:30", &zone("America/New_York"), &now).expect("a valid pin");
-        assert_eq!(reading(&pinned, &zone("America/New_York")).time, "03:30");
+        assert_eq!(
+            reading(&pinned, &zone("America/New_York"), Format::TwentyFour).time,
+            "03:30"
+        );
+    }
+
+    #[test]
+    fn pins_a_twelve_hour_time() {
+        let now = at("2026-08-15T12:00:00Z", "UTC");
+        for (text, expected) in [
+            ("9:30 am", "09:30"),
+            ("9:30 pm", "21:30"),
+            ("12:00 am", "00:00"),
+            ("12:00 pm", "12:00"),
+            ("9:30PM", "21:30"),
+            (" 9:30 Pm ", "21:30"),
+        ] {
+            let pinned = pin(text, &zone("UTC"), &now).expect(text);
+            assert_eq!(
+                reading(&pinned, &zone("UTC"), Format::TwentyFour).time,
+                expected,
+                "{text:?}"
+            );
+        }
     }
 
     #[test]
     fn text_that_is_not_a_time_does_not_pin() {
         let now = at("2026-08-15T12:00:00Z", "UTC");
-        for text in ["", "noon", "12", "25:00", "12:60", "-1:30", "1:2:3"] {
+        for text in [
+            "", "noon", "12", "25:00", "12:60", "-1:30", "1:2:3", "0:30 am", "13:00 pm", "9:30 xm",
+        ] {
             assert_eq!(pin(text, &zone("UTC"), &now), None, "{text:?}");
         }
     }
