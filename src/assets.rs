@@ -12,6 +12,9 @@ impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         Ok(match path {
             "icons/trash.svg" => Some(Cow::Borrowed(include_bytes!("../assets/icons/trash.svg"))),
+            "icons/milestone.svg" => Some(Cow::Borrowed(include_bytes!(
+                "../assets/icons/milestone.svg"
+            ))),
             _ => None,
         })
     }

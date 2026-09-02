@@ -10,6 +10,7 @@ mod footer;
 mod row;
 mod scrollbar;
 pub(crate) mod search;
+mod tooltip;
 
 use crate::cities;
 use crate::clock;

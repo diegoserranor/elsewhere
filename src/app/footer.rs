@@ -3,6 +3,7 @@ use jiff::Zoned;
 
 use super::Elsewhere;
 use super::drag::DragRow;
+use super::tooltip::Tooltip;
 use crate::clock;
 use crate::theme;
 
@@ -118,17 +119,32 @@ impl Elsewhere {
             .child(div().children((self.saved.len() > 1).then(|| {
                 div()
                     .id("westward")
-                    .px_1()
+                    .w_7()
+                    .h_5()
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .rounded_md()
                     .cursor_pointer()
-                    .text_color(if self.westward {
-                        rgb(theme::BLUE)
-                    } else {
-                        rgb(theme::OVERLAY0)
-                    })
                     .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                    .tooltip(Tooltip::text(if self.westward {
+                        "ordered west to east"
+                    } else {
+                        "order west to east"
+                    }))
                     .on_click(cx.listener(|this, _event, _window, cx| this.toggle_westward(cx)))
-                    .child("west → east")
+                    .child(
+                        svg()
+                            .path("icons/milestone.svg")
+                            .size_3p5()
+                            // An svg paints only in a color set on itself; the
+                            // parent's does not reach it.
+                            .text_color(if self.westward {
+                                rgb(theme::BLUE)
+                            } else {
+                                rgb(theme::OVERLAY0)
+                            }),
+                    )
             })))
     }
 }
