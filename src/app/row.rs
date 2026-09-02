@@ -223,15 +223,19 @@ impl Elsewhere {
                     // The cell is fixed so the column lines up; the pill inside
                     // wraps the digits, so the hover wash sits under them
                     // rather than under the empty half of a right-aligned cell.
+                    // It runs the cell's full height, so the hover look is the
+                    // same box the editor opens into.
                     _ => div()
                         .w(TIME_WIDTH)
                         .h(TIME_HEIGHT)
                         .flex()
-                        .items_center()
                         .justify_end()
                         .child(
                             div()
                                 .id(("time", geonameid as usize))
+                                .h_full()
+                                .flex()
+                                .items_center()
                                 .px_1()
                                 .rounded_md()
                                 .when_some(self.mono.clone(), Styled::font_family)
