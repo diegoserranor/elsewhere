@@ -20,16 +20,6 @@ const TIME_WIDTH: Pixels = px(64.);
 /// than its text needs as a result; the honest fix is a shorter input.
 const TIME_HEIGHT: Pixels = px(36.);
 
-/// Width of the cell the delete x sits in. The x is invisible at rest but its
-/// cell is not, so the times keep a column of their own whatever the pointer
-/// is doing.
-const CONTROL_WIDTH: Pixels = px(24.);
-
-/// How far the search bar and the footer are inset on the right to meet that
-/// column: the x's cell plus the row's `gap_2` beside it. Spelled out because
-/// `Pixels` does not add in a const.
-pub(super) const GUTTER: Pixels = px(32.);
-
 /// How far a row's hover wash reaches into the window padding, so the label
 /// does not sit flush against the wash's edge.
 const WASH: Pixels = px(8.);
@@ -151,7 +141,6 @@ impl Elsewhere {
             Some(reading) => (reading.time, reading.day),
             None => (clock::UNKNOWN.to_string(), None),
         };
-        let group = format!("saved-{geonameid}");
         Some(
             // The transparent border is dressed on in either view, so an
             // insertion line costs no layout and toggling the order does not
@@ -159,7 +148,6 @@ impl Elsewhere {
             // from the westward order, which does not reorder.
             drop_target(div())
                 .id(("row", geonameid as usize))
-                .group(group.clone())
                 .flex()
                 .flex_row()
                 .gap_2()
@@ -255,25 +243,7 @@ impl Elsewhere {
                                 .child(time.clone()),
                         )
                         .into_any_element(),
-                })
-                .child(
-                    div()
-                        .id(("delete", geonameid as usize))
-                        .w(CONTROL_WIDTH)
-                        .flex()
-                        .justify_center()
-                        .rounded_md()
-                        .text_color(rgb(theme::RED))
-                        .opacity(0.)
-                        .group_hover(group, |style| style.opacity(0.5))
-                        .cursor_pointer()
-                        .hover(|style| style.opacity(1.).bg(rgb(theme::SURFACE0)))
-                        .active(|style| style.opacity(0.8))
-                        .on_click(cx.listener(move |this, _event, window, cx| {
-                            this.delete(geonameid, window, cx)
-                        }))
-                        .child("x"),
-                ),
+                }),
         )
     }
 }
