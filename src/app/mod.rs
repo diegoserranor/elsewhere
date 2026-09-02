@@ -179,16 +179,7 @@ impl Render for Elsewhere {
             .p_4()
             .bg(rgb(theme::BASE))
             .text_color(rgb(theme::TEXT))
-            // Both are inset by a row's gutter on the right, so the search bar
-            // and the footer end where the times do. The list between keeps
-            // the full width: its gutter is the delete column.
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .mr(row::GUTTER)
-                    .child(self.picker.clone()),
-            )
+            .child(self.picker.clone())
             .children(self.render_banner(&now, cx))
             // The rows scroll on their own, so the input and toolbar above stay
             // put however long the list grows. `min_h_0` is what lets this flex
@@ -214,16 +205,9 @@ impl Render for Elsewhere {
                                 list.child(self.render_drop_tail(cx))
                             }),
                     )
-                    // Hung out in the window padding, clear of the delete
-                    // column the rows end in.
+                    // Hung out in the window padding, clear of the times.
                     .child(scrollbar(&self.saved_scroll, px(-6.))),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .mr(row::GUTTER)
-                    .child(self.render_footer(dragging, cx)),
-            )
+            .child(self.render_footer(dragging, cx))
     }
 }

@@ -1,8 +1,8 @@
 use gpui::{Context, Window, div, prelude::*, rgb, rgba, svg};
 use jiff::Zoned;
 
+use super::Elsewhere;
 use super::drag::DragRow;
-use super::{Elsewhere, row};
 use crate::clock;
 use crate::theme;
 
@@ -38,7 +38,6 @@ impl Elsewhere {
                 .flex_row()
                 .justify_between()
                 .items_center()
-                .mr(row::GUTTER)
                 .h_6()
                 .px_2()
                 .rounded_md()
