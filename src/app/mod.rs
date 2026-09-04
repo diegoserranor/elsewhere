@@ -7,6 +7,7 @@ use jiff::Zoned;
 
 mod drag;
 mod footer;
+mod map;
 mod row;
 mod scrollbar;
 pub(crate) mod search;
