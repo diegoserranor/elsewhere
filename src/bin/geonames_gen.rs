@@ -29,7 +29,7 @@ const MAX_REPORTED_ROWS: usize = 5;
 
 /// The one comment line data/cities.tsv opens with, naming its columns.
 const OUT_HEADER: &str =
-    "#geonameid\tname\tasciiname\tcountry\tadmin1\tpopulation\ttimezone\tlongitude";
+    "#geonameid\tname\tasciiname\tcountry\tadmin1\tpopulation\ttimezone\tlatitude\tlongitude";
 
 /// The columns of cities5000.txt we keep; the rest are dropped on parse.
 #[allow(dead_code)] // most fields are only read once the dataset is emitted
@@ -59,6 +59,8 @@ struct Row {
     admin1: String,
     population: u64,
     timezone: String,
+    /// Degrees north of the equator, negative south.
+    latitude: f64,
     /// Degrees east of Greenwich, negative west.
     longitude: f64,
 }
@@ -147,6 +149,7 @@ fn resolve(
             name: city.name,
             population: city.population,
             timezone: city.timezone,
+            latitude: city.latitude,
             longitude: city.longitude,
         })
         .collect())
@@ -159,7 +162,7 @@ fn render(rows: &[Row]) -> String {
     for row in rows {
         out.push('\n');
         out.push_str(&format!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.geonameid,
             row.name,
             row.asciiname,
@@ -167,6 +170,7 @@ fn render(rows: &[Row]) -> String {
             row.admin1,
             row.population,
             row.timezone,
+            row.latitude,
             row.longitude
         ));
     }
@@ -588,6 +592,7 @@ JP.40\tTokyo\tTokyo\t1850144";
         assert_eq!(rows[1].name, "Sant Julià de Lòria");
         assert_eq!(rows[1].asciiname, "Sant Julia de Loria");
         assert_eq!(rows[1].admin1, "Sant Julià de Lòria");
+        assert_eq!(rows[0].latitude, 35.6895);
         assert_eq!(rows[0].longitude, 139.69171);
     }
 
@@ -623,11 +628,11 @@ JP.40\tTokyo\tTokyo\t1850144";
         assert!(lines[0].starts_with('#'));
         assert_eq!(
             lines[1],
-            "1850147\tTokyo\t\tJapan\tTokyo\t9733276\tAsia/Tokyo\t139.69171"
+            "1850147\tTokyo\t\tJapan\tTokyo\t9733276\tAsia/Tokyo\t35.6895\t139.69171"
         );
         assert_eq!(
             lines[3],
-            "9179507\tMalmok\t\tAruba\t\t5637\tAmerica/Aruba\t-70.05064"
+            "9179507\tMalmok\t\tAruba\t\t5637\tAmerica/Aruba\t12.60087\t-70.05064"
         );
         assert!(out.ends_with('\n'));
     }

@@ -161,6 +161,7 @@ mod tests {
             admin1: admin1.to_string(),
             population,
             timezone: "UTC".to_string(),
+            latitude: 0.0,
             longitude: 0.0,
         }
     }
