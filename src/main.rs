@@ -7,6 +7,7 @@ mod app;
 mod assets;
 mod cities;
 mod clock;
+mod geo;
 mod saved;
 mod search;
 mod theme;
