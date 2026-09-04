@@ -1,7 +1,9 @@
+use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui::{
-    Context, Entity, ScrollHandle, SharedString, Task, Window, actions, div, prelude::*, px, rgb,
+    Bounds, Context, Entity, Pixels, ScrollHandle, SharedString, Task, Window, actions, div,
+    prelude::*, px, rgb,
 };
 use jiff::Zoned;
 
@@ -15,6 +17,8 @@ mod tooltip;
 
 use crate::cities;
 use crate::clock;
+use crate::geo;
+use crate::land;
 use crate::saved;
 use crate::search::SearchIndex;
 use crate::theme;
@@ -29,6 +33,14 @@ actions!(pin_editor, [Commit, Cancel]);
 // Escape from anywhere in the window: back to the live clock. The search
 // picker lets it through only when it has nothing of its own to clear.
 actions!(elsewhere, [Unpin]);
+
+/// Which of the two ways the saved cities are shown.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum View {
+    #[default]
+    List,
+    Map,
+}
 
 /// A what-if time in effect.
 pub(crate) struct Pin {
@@ -49,6 +61,9 @@ pub struct Elsewhere {
     zones: clock::Zones,
     /// The geonameid a drag is carrying, while one is in flight.
     drag: Option<u32>,
+    /// Whether the cities are shown as a list or on a map. Like `westward`, a
+    /// view preference that is not persisted.
+    view: View,
     /// Whether the list is shown ordered by longitude rather than by hand. A
     /// view preference, deliberately not persisted.
     westward: bool,
@@ -62,6 +77,13 @@ pub struct Elsewhere {
     /// Where the saved list has scrolled to. Doubles as the list's on-screen
     /// bounds, which the scrollbar reads.
     saved_scroll: ScrollHandle,
+    /// The world's coastlines, read once. The map's canvas closures outlive the
+    /// borrow that built them, so they take a handle rather than a reference.
+    land: Rc<Vec<Vec<geo::LonLat>>>,
+    /// Where the map last drew itself inside the list region. The canvas is the
+    /// only thing that knows the letterbox, and it settles during prepaint;
+    /// whatever is laid over the map reads it back from here.
+    map_rect: Rc<Cell<Option<Bounds<Pixels>>>>,
     /// The mono face the time column reads in, if the system has one.
     mono: Option<SharedString>,
     /// The clock, kept alive for as long as the window is.
@@ -91,11 +113,14 @@ impl Elsewhere {
             saved,
             zones,
             drag: None,
+            view: View::default(),
             westward: false,
             format: clock::Format::default(),
             pinned: None,
             editing: None,
             saved_scroll: ScrollHandle::new(),
+            land: Rc::new(land::load()),
+            map_rect: Rc::new(Cell::new(None)),
             mono: row::mono(cx),
             _tick: tick(cx),
         }
@@ -190,30 +215,30 @@ impl Render for Elsewhere {
             // The rows scroll on their own, so the input and toolbar above stay
             // put however long the list grows. `min_h_0` is what lets this flex
             // child shrink below its content and actually overflow.
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        div()
-                            .id("saved")
-                            .size_full()
-                            .flex()
-                            .flex_col()
-                            .gap_3()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.saved_scroll)
-                            .children(order.into_iter().filter_map(|geonameid| {
-                                self.render_row(geonameid, &now, dragging, cx)
-                            }))
-                            .when(!self.westward && dragging && self.drag.is_some(), |list| {
-                                list.child(self.render_drop_tail(cx))
-                            }),
-                    )
-                    // Hung out in the window padding, clear of the times.
-                    .child(scrollbar(&self.saved_scroll, px(-6.))),
-            )
+            .child(div().relative().flex_1().min_h_0().map(|region| {
+                match self.view {
+                    View::Map => region.child(self.render_map(&now, cx)),
+                    View::List => region
+                        .child(
+                            div()
+                                .id("saved")
+                                .size_full()
+                                .flex()
+                                .flex_col()
+                                .gap_3()
+                                .overflow_y_scroll()
+                                .track_scroll(&self.saved_scroll)
+                                .children(order.into_iter().filter_map(|geonameid| {
+                                    self.render_row(geonameid, &now, dragging, cx)
+                                }))
+                                .when(!self.westward && dragging && self.drag.is_some(), |list| {
+                                    list.child(self.render_drop_tail(cx))
+                                }),
+                        )
+                        // Hung out in the window padding, clear of the times.
+                        .child(scrollbar(&self.saved_scroll, px(-6.))),
+                }
+            }))
             .child(self.render_footer(dragging, cx))
     }
 }

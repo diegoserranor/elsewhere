@@ -1,9 +1,9 @@
 use gpui::{Context, Pixels, Window, div, prelude::*, px, rgb, rgba, svg, transparent_black};
 use jiff::Zoned;
 
-use super::Elsewhere;
 use super::drag::DragRow;
 use super::tooltip::Tooltip;
+use super::{Elsewhere, View};
 use crate::clock::{self, Format};
 use crate::theme;
 
@@ -29,6 +29,14 @@ const FORMAT: Toggle = Toggle {
     click: Elsewhere::toggle_format,
 };
 
+const VIEW: Toggle = Toggle {
+    id: "view",
+    icon: "icons/map.svg",
+    size: px(16.),
+    tips: ["show on a map", "showing on a map"],
+    click: Elsewhere::toggle_view,
+};
+
 const WESTWARD: Toggle = Toggle {
     id: "westward",
     icon: "icons/milestone.svg",
@@ -41,6 +49,14 @@ impl Elsewhere {
     pub(super) fn unpin(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.pinned = None;
         self.close_editor(window, cx);
+    }
+
+    fn toggle_view(&mut self, cx: &mut Context<Self>) {
+        self.view = match self.view {
+            View::List => View::Map,
+            View::Map => View::List,
+        };
+        cx.notify();
     }
 
     fn toggle_westward(&mut self, cx: &mut Context<Self>) {
@@ -190,9 +206,10 @@ impl Elsewhere {
             )
     }
 
-    /// The strip along the bottom: a bin on the left for as long as a row is
-    /// in flight, view preferences on the right. It is always there, at a
-    /// fixed height, so the list above never shifts as controls come and go.
+    /// The strip along the bottom: the view switch on the left, joined by the
+    /// bin for as long as a row is in flight, and the reading preferences on
+    /// the right. It is always there, at a fixed height, so the list above
+    /// never shifts as controls come and go.
     pub(super) fn render_footer(&self, dragging: bool, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
@@ -201,7 +218,14 @@ impl Elsewhere {
             .items_center()
             .h_5()
             .text_xs()
-            .child(div().children((dragging && self.drag.is_some()).then(|| self.render_bin(cx))))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap_1()
+                    .child(self.render_toggle(&VIEW, self.view == View::Map, cx))
+                    .children((dragging && self.drag.is_some()).then(|| self.render_bin(cx))),
+            )
             .child(
                 div()
                     .flex()
@@ -212,8 +236,10 @@ impl Elsewhere {
                             self.render_toggle(&FORMAT, self.format == Format::Twelve, cx)
                         }),
                     )
+                    // On a map the cities already stand where they stand, so
+                    // there is no order left to choose.
                     .children(
-                        (self.saved.len() > 1)
+                        (self.saved.len() > 1 && self.view == View::List)
                             .then(|| self.render_toggle(&WESTWARD, self.westward, cx)),
                     ),
             )

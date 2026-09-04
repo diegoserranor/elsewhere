@@ -2,8 +2,9 @@
 
 ## Lucide icons
 
-`assets/icons/trash.svg`, `assets/icons/milestone.svg` and
-`assets/icons/clock-12.svg` are from [Lucide](https://lucide.dev).
+`assets/icons/trash.svg`, `assets/icons/milestone.svg`,
+`assets/icons/clock-12.svg` and `assets/icons/map.svg` are from
+[Lucide](https://lucide.dev).
 
 ISC License
 

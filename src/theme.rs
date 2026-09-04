@@ -10,6 +10,9 @@ pub(crate) const SURFACE0: u32 = 0x313244;
 /// The same wash at half strength, under a hovered row. Carries its alpha, so
 /// call sites wrap it in `rgba()`.
 pub(crate) const WASH: u32 = 0x31324480;
+/// The map's dark half, laid over the land. Catppuccin crust, and it carries
+/// its alpha, so call sites wrap it in `rgba()`.
+pub(crate) const NIGHT: u32 = 0x11111b99;
 /// The scrollbar thumb.
 pub(crate) const SURFACE1: u32 = 0x45475a;
 /// Text that steps back: the day tag, a toggle that is off.
