@@ -1,4 +1,6 @@
-use gpui::{Context, Div, Window, div, prelude::*, rgb, transparent_black};
+use gpui::{
+    App, Context, Div, Entity, Pixels, Point, Window, div, prelude::*, rgb, transparent_black,
+};
 
 use super::Elsewhere;
 use crate::saved;
@@ -38,6 +40,27 @@ pub(super) fn drop_target(element: Div, open: bool) -> Div {
 }
 
 impl Elsewhere {
+    /// The constructor `on_drag` calls once a drag actually starts: it notes
+    /// which row is in flight, asks for the frame that shows the bin, and hands
+    /// back the preview that follows the cursor. Shared by the list's rows and
+    /// the map's dots, which are the same drag wearing different clothes.
+    pub(super) fn drag_preview(
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&DragRow, Point<Pixels>, &mut Window, &mut App) -> Entity<DragRow> + 'static {
+        let this = cx.weak_entity();
+        move |row, _position, _window, cx| {
+            this.update(cx, |this, cx| {
+                this.drag = Some(row.geonameid);
+                cx.notify();
+            })
+            .ok();
+            cx.new(|_cx| DragRow {
+                geonameid: row.geonameid,
+                label: row.label.clone(),
+            })
+        }
+    }
+
     /// Lands a dragged row before `before`, or at the end without one.
     pub(super) fn drop(&mut self, dragged: u32, before: Option<u32>, cx: &mut Context<Self>) {
         self.drag = None;

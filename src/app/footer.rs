@@ -18,7 +18,7 @@ struct Toggle {
     /// The tooltip, while off and while on.
     tips: [&'static str; 2],
     /// A plain fn, so the element can outlive the borrow that built it.
-    click: fn(&mut Elsewhere, &mut Context<Elsewhere>),
+    click: fn(&mut Elsewhere, &mut Window, &mut Context<Elsewhere>),
 }
 
 const FORMAT: Toggle = Toggle {
@@ -51,20 +51,22 @@ impl Elsewhere {
         self.close_editor(window, cx);
     }
 
-    fn toggle_view(&mut self, cx: &mut Context<Self>) {
+    fn toggle_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.view = match self.view {
             View::List => View::Map,
             View::Map => View::List,
         };
-        cx.notify();
+        // The other view has no box for an open editor to live in, and its
+        // focus would be stranded there.
+        self.close_editor(window, cx);
     }
 
-    fn toggle_westward(&mut self, cx: &mut Context<Self>) {
+    fn toggle_westward(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.westward = !self.westward;
         cx.notify();
     }
 
-    fn toggle_format(&mut self, cx: &mut Context<Self>) {
+    fn toggle_format(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.format = match self.format {
             Format::TwentyFour => Format::Twelve,
             Format::Twelve => Format::TwentyFour,
@@ -102,7 +104,7 @@ impl Elsewhere {
             .cursor_pointer()
             .hover(|style| style.bg(rgb(theme::SURFACE0)))
             .tooltip(Tooltip::text(tips[on as usize]))
-            .on_click(cx.listener(move |this, _event, _window, cx| click(this, cx)))
+            .on_click(cx.listener(move |this, _event, window, cx| click(this, window, cx)))
             .child(
                 svg()
                     .path(icon)

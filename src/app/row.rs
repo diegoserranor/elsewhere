@@ -1,5 +1,6 @@
 use gpui::{
-    App, Context, Entity, Focusable, Pixels, SharedString, Window, div, prelude::*, px, rgb, rgba,
+    App, Context, Div, Entity, Focusable, Pixels, SharedString, Window, div, prelude::*, px, rgb,
+    rgba,
 };
 use jiff::Zoned;
 
@@ -76,7 +77,7 @@ impl Elsewhere {
 
     /// Opens the what-if editor on a row's time. The current reading rides
     /// along as the placeholder, since the input cannot be prefilled.
-    fn edit(
+    pub(super) fn edit(
         &mut self,
         geonameid: u32,
         current: String,
@@ -129,6 +130,21 @@ impl Elsewhere {
         cx.notify();
     }
 
+    /// The what-if editor in the box the time column reserves for it. Enter
+    /// and escape fall through the vendored input, so the wrapper carries the
+    /// context that catches them. Shared with the map, which opens the same
+    /// editor on a label's time.
+    pub(super) fn render_editor(&self, input: &Entity<TextInput>, cx: &mut Context<Self>) -> Div {
+        div()
+            .key_context("PinEditor")
+            .on_action(cx.listener(Self::commit))
+            .on_action(cx.listener(Self::cancel))
+            .w(time_width(self.format))
+            .h(TIME_HEIGHT)
+            .when_some(self.mono.clone(), Styled::font_family)
+            .child(input.clone())
+    }
+
     /// The `use<>` says the row borrows none of the arguments, which is what
     /// lets `render` build the list inside a closure that holds `cx`.
     pub(super) fn render_row(
@@ -173,22 +189,7 @@ impl Elsewhere {
                         geonameid,
                         label: label.clone(),
                     },
-                    {
-                        let this = cx.weak_entity();
-                        move |row: &DragRow, _position, _window, cx| {
-                            // The bin and the drop tail appear on the next
-                            // frame, so ask for one.
-                            this.update(cx, |this, cx| {
-                                this.drag = Some(row.geonameid);
-                                cx.notify();
-                            })
-                            .ok();
-                            cx.new(|_cx| DragRow {
-                                geonameid: row.geonameid,
-                                label: row.label.clone(),
-                            })
-                        }
-                    },
+                    Self::drag_preview(cx),
                 )
                 .when(!self.westward, |row| {
                     row.on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
@@ -215,17 +216,9 @@ impl Elsewhere {
                     day.map(|day| div().text_xs().text_color(rgb(theme::OVERLAY0)).child(day)),
                 )
                 .child(match &self.editing {
-                    Some((editing, input)) if *editing == geonameid => div()
-                        // Enter and escape fall through the input and
-                        // land on this wrapper's context.
-                        .key_context("PinEditor")
-                        .on_action(cx.listener(Self::commit))
-                        .on_action(cx.listener(Self::cancel))
-                        .w(time_width(self.format))
-                        .h(TIME_HEIGHT)
-                        .when_some(self.mono.clone(), Styled::font_family)
-                        .child(input.clone())
-                        .into_any_element(),
+                    Some((editing, input)) if *editing == geonameid => {
+                        self.render_editor(input, cx).into_any_element()
+                    }
                     // The cell is fixed so the column lines up; the pill inside
                     // wraps the digits, so the hover wash sits under them
                     // rather than under the empty half of a right-aligned cell.

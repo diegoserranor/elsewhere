@@ -84,6 +84,8 @@ pub struct Elsewhere {
     /// only thing that knows the letterbox, and it settles during prepaint;
     /// whatever is laid over the map reads it back from here.
     map_rect: Rc<Cell<Option<Bounds<Pixels>>>>,
+    /// Wheel motion over the map that has not yet added up to a whole notch.
+    scrub_carry: f32,
     /// The mono face the time column reads in, if the system has one.
     mono: Option<SharedString>,
     /// The clock, kept alive for as long as the window is.
@@ -121,6 +123,7 @@ impl Elsewhere {
             saved_scroll: ScrollHandle::new(),
             land: Rc::new(land::load()),
             map_rect: Rc::new(Cell::new(None)),
+            scrub_carry: 0.,
             mono: row::mono(cx),
             _tick: tick(cx),
         }
@@ -170,7 +173,7 @@ fn tick(cx: &mut Context<Elsewhere>) -> Task<()> {
 }
 
 impl Render for Elsewhere {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // gpui refreshes the window once a drag ends, however it ended, so this
         // is where a cancelled drag is forgotten.
         let dragging = cx.has_active_drag();
@@ -217,7 +220,9 @@ impl Render for Elsewhere {
             // child shrink below its content and actually overflow.
             .child(div().relative().flex_1().min_h_0().map(|region| {
                 match self.view {
-                    View::Map => region.child(self.render_map(&now, cx)),
+                    View::Map => {
+                        region.child(self.render_map(&self.saved, &now, dragging, window, cx))
+                    }
                     View::List => region
                         .child(
                             div()
