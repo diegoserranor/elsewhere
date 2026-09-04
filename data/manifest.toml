@@ -1,11 +1,13 @@
-# Snapshot of GeoNames source data used to generate the committed dataset.
-# Regenerate with scripts/fetch-geonames.sh, then update the hashes below.
+# Snapshot of the source data used to generate the committed datasets.
+# Regenerate data/cities.tsv with scripts/fetch-geonames.sh and `cargo run --bin
+# geonames_gen`, data/land.tsv with scripts/fetch-naturalearth.sh and `cargo run
+# --bin land_gen`, then update the hashes below.
 
 [[file]]
 name = "cities5000.txt"
 url = "https://download.geonames.org/export/dump/cities5000.zip"
-retrieved = 2026-08-15
-sha256 = "76faab072a421686944f40dec922f17a8786002591467e7a73dec5445f51b7a7"
+retrieved = 2026-09-04
+sha256 = "28fab10de3ef86d9e0468fd726bc26582bea3beb92fa5f63689729a974728ac1"
 
 [[file]]
 name = "countryInfo.txt"
@@ -18,3 +20,9 @@ name = "admin1CodesASCII.txt"
 url = "https://download.geonames.org/export/dump/admin1CodesASCII.txt"
 retrieved = 2026-08-15
 sha256 = "590651498043f674accda2b7f46d21286cda0e290b02f8561c5005eee9a5448c"
+
+[[file]]
+name = "ne_110m_land.geojson"
+url = "https://github.com/nvkelso/natural-earth-vector/raw/master/geojson/ne_110m_land.geojson"
+retrieved = 2026-09-04
+sha256 = "9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9"

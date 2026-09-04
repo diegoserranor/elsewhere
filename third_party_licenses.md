@@ -45,3 +45,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Natural Earth
+
+`data/land.tsv` is derived from the Natural Earth 110m land vector
+([naturalearthdata.com](https://www.naturalearthdata.com)), which is in the
+public domain, fetched from the GeoJSON mirror at
+[nvkelso/natural-earth-vector](https://github.com/nvkelso/natural-earth-vector).
