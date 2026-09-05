@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Context, Entity, EventEmitter, FocusHandle, Focusable, MouseDownEvent, ScrollHandle,
+    App, Axis, Context, Entity, EventEmitter, FocusHandle, Focusable, MouseDownEvent, ScrollHandle,
     Window, actions, deferred, div, prelude::*, px, rgb,
 };
 
@@ -178,7 +178,7 @@ impl Render for SearchPicker {
                                 this.dismiss(cx)
                             },
                         ))
-                        .child(scrollbar(&self.scroll, px(2.)))
+                        .child(scrollbar(&self.scroll, Axis::Vertical, px(2.)))
                         .child(
                             div()
                                 .id("results")

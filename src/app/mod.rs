@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui::{
-    Bounds, Context, Entity, Pixels, ScrollHandle, SharedString, Task, Window, actions, div,
+    Axis, Bounds, Context, Entity, Pixels, ScrollHandle, SharedString, Task, Window, actions, div,
     prelude::*, px, rgb,
 };
 use jiff::Zoned;
@@ -241,7 +241,7 @@ impl Render for Elsewhere {
                                 }),
                         )
                         // Hung out in the window padding, clear of the times.
-                        .child(scrollbar(&self.saved_scroll, px(-6.))),
+                        .child(scrollbar(&self.saved_scroll, Axis::Vertical, px(-6.))),
                 }
             }))
             .child(self.render_footer(dragging, cx))
