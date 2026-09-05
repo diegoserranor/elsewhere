@@ -29,10 +29,16 @@ fn main() {
                 KeyBinding::new("escape", app::Unpin, Some("Elsewhere")),
             ]);
 
-            let bounds = Bounds::centered(None, size(px(400.), px(300.)), cx);
+            // A tall shape, as the list it opens on is: ten rows or so, and a
+            // map that scrolls sideways rather than shrinking to fit. Kept
+            // under 600 so it still fits a 1200-pixel display at 2x.
+            let bounds = Bounds::centered(None, size(px(400.), px(560.)), cx);
             cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    // Narrower than this and a row cannot hold a name and a
+                    // time; shorter and the search has no list under it.
+                    window_min_size: Some(size(px(320.), px(360.))),
                     titlebar: Some(TitlebarOptions {
                         title: Some("elsewhere".into()),
                         ..Default::default()
