@@ -2,8 +2,8 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui::{
-    Axis, Bounds, Context, Entity, Pixels, ScrollHandle, SharedString, Task, Window, actions, div,
-    prelude::*, px, rgb,
+    Axis, Context, Entity, ScrollHandle, SharedString, Task, Window, actions, div, prelude::*, px,
+    rgb,
 };
 use jiff::Zoned;
 
@@ -80,10 +80,12 @@ pub struct Elsewhere {
     /// The world's coastlines, read once. The map's canvas closures outlive the
     /// borrow that built them, so they take a handle rather than a reference.
     land: Rc<Vec<Vec<geo::LonLat>>>,
-    /// Where the map last drew itself inside the list region. The canvas is the
-    /// only thing that knows the letterbox, and it settles during prepaint;
-    /// whatever is laid over the map reads it back from here.
-    map_rect: Rc<Cell<Option<Bounds<Pixels>>>>,
+    /// Where the map last drew itself. The canvas is the only thing that knows
+    /// the letterbox, and it settles during prepaint; whatever is laid over the
+    /// map reads it back from here.
+    map_layout: Rc<Cell<Option<map::Layout>>>,
+    /// How far the map has scrolled sideways, while it is wider than the region.
+    map_scroll: ScrollHandle,
     /// Wheel motion over the map that has not yet added up to a whole notch.
     scrub_carry: f32,
     /// The mono face the time column reads in, if the system has one.
@@ -122,7 +124,8 @@ impl Elsewhere {
             editing: None,
             saved_scroll: ScrollHandle::new(),
             land: Rc::new(land::load()),
-            map_rect: Rc::new(Cell::new(None)),
+            map_layout: Rc::new(Cell::new(None)),
+            map_scroll: ScrollHandle::new(),
             scrub_carry: 0.,
             mono: row::mono(cx),
             _tick: tick(cx),

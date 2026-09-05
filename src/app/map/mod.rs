@@ -4,11 +4,12 @@ mod labels;
 mod pins;
 
 use gpui::{
-    Bounds, Context, Path, PathBuilder, Pixels, Point, ScrollDelta, ScrollWheelEvent, Size, Window,
-    canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
+    Axis, Bounds, Context, Path, PathBuilder, Pixels, Point, ScrollDelta, ScrollWheelEvent, Size,
+    Window, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
 };
 use jiff::{RoundMode, Span, Unit, Zoned, ZonedRound};
 
+use super::scrollbar::scrollbar;
 use super::{Elsewhere, Pin};
 use crate::geo::{self, LonLat};
 use crate::theme;
@@ -25,11 +26,29 @@ const NOTCH_MINUTES: i64 = 15;
 /// does. Roughly the distance a mouse wheel's click carries.
 const NOTCH_PIXELS: f32 = 40.0;
 
+/// How far below the map's bottom edge the sideways scrollbar hangs.
+const SCROLLBAR_GAP: Pixels = px(4.);
+
+/// How the map last laid itself out: the region it was given, and the rect it
+/// drew in, whose origin is relative to the scrolled content. The rect is wider
+/// than the viewport when the map is scrolling sideways.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Layout {
+    pub viewport: Size<Pixels>,
+    pub rect: Bounds<Pixels>,
+}
+
+impl Layout {
+    fn overflows(&self) -> bool {
+        self.rect.size.width > self.viewport.width
+    }
+}
+
 impl Elsewhere {
-    /// Where the map last drew itself, in the coordinates of the region it
-    /// fills. `None` until the first frame has been laid out.
+    /// Where the map last drew itself, in the coordinates of the content it
+    /// scrolls with. `None` until the first frame has been laid out.
     pub(super) fn map_rect(&self) -> Option<Bounds<Pixels>> {
-        self.map_rect.get()
+        self.map_layout.get().map(|layout| layout.rect)
     }
 
     /// The map region: the world, the cities on it, and the wheel that scrubs
@@ -42,14 +61,62 @@ impl Elsewhere {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
+        let layout = self.map_layout.get();
         div()
             .relative()
             .size_full()
-            .on_scroll_wheel(
-                cx.listener(|this, event: &ScrollWheelEvent, _window, cx| this.scrub(event, cx)),
+            .child(
+                div()
+                    .id("map")
+                    .size_full()
+                    .overflow_x_scroll()
+                    .track_scroll(&self.map_scroll)
+                    // Left to itself gpui would turn a plain wheel into a
+                    // sideways scroll here; that gesture is the time scrub, and
+                    // the platform already reports shift+wheel as sideways.
+                    .map(|mut scroller| {
+                        scroller.style().restrict_scroll_to_axis = Some(true);
+                        scroller
+                    })
+                    .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
+                        this.scrub(event, cx)
+                    }))
+                    .child(
+                        // The scrolled content: as wide as the map when that
+                        // is wider than the region, otherwise the region.
+                        div()
+                            .relative()
+                            .h_full()
+                            .min_w_full()
+                            .when_some(layout, |content, layout| content.w(layout.rect.size.width))
+                            .child(self.render_world(now))
+                            .children(self.render_pins(saved, now, dragging, window, cx)),
+                    ),
             )
-            .child(self.render_world(now))
-            .children(self.render_pins(saved, now, dragging, window, cx))
+            .when_some(layout.filter(Layout::overflows), |map, layout| {
+                map.child(scrollbar(
+                    &self.map_scroll,
+                    Axis::Horizontal,
+                    layout.rect.size.height + SCROLLBAR_GAP,
+                ))
+            })
+    }
+
+    /// The longitude the map centres on when it first becomes wider than the
+    /// region: the reader's own city if one is saved, else the first saved
+    /// city, else Greenwich.
+    fn focus(&self) -> f64 {
+        let now = Zoned::now();
+        let home = now.time_zone().iana_name();
+        let mut cities = self
+            .saved
+            .iter()
+            .filter_map(|geonameid| self.index.city(*geonameid));
+        cities
+            .clone()
+            .find(|city| Some(city.timezone.as_str()) == home)
+            .or_else(|| cities.next())
+            .map_or(0.0, |city| city.longitude)
     }
 
     /// Wheel over the map: a notch down is a quarter hour later, the way the
@@ -104,17 +171,51 @@ impl Elsewhere {
 
     fn render_world(&self, now: &Zoned) -> impl IntoElement + use<> {
         let land = self.land.clone();
-        let remembered = self.map_rect.clone();
+        let remembered = self.map_layout.clone();
+        let scroll = self.map_scroll.clone();
+        let focus = self.focus();
         let sun = geo::subsolar(now);
 
         canvas(
             move |bounds, window, _cx| {
-                let rect = fit(bounds.size);
-                if remembered.get() != Some(rect) {
-                    remembered.set(Some(rect));
+                // The canvas fills the scrolled content, which may already be
+                // wider than the region; the letterbox is fitted to the region,
+                // which the scroller has measured by now.
+                let viewport = scroll.bounds().size;
+                let rect = fit(viewport);
+                let layout = Layout { viewport, rect };
+                let before = remembered.get();
+                if before != Some(layout) {
+                    remembered.set(Some(layout));
+                    if layout.overflows() {
+                        // Where along the map the middle of the region falls,
+                        // as a fraction of its width.
+                        let middle = match before.filter(Layout::overflows) {
+                            // Already scrolling: keep whatever longitude was
+                            // in the middle through the resize.
+                            Some(before) => {
+                                (before.viewport.width / 2. - scroll.offset().x)
+                                    / before.rect.size.width
+                            }
+                            // Just grown past the region: start on the
+                            // reader's own longitude rather than the Pacific.
+                            None => {
+                                geo::project(LonLat {
+                                    lon: focus,
+                                    lat: 0.0,
+                                })
+                                .0 as f32
+                            }
+                        };
+                        let most = rect.size.width - viewport.width;
+                        let left =
+                            (rect.size.width * middle - viewport.width / 2.).clamp(px(0.), most);
+                        scroll.set_offset(point(-left, px(0.)));
+                    }
                     // What goes over the map is positioned from this rect, so
-                    // the frame that first measures it is already stale.
-                    window.refresh();
+                    // the frame that first measures it is already stale. A
+                    // plain refresh is ignored mid-draw; this one lands.
+                    window.request_animation_frame();
                 }
                 Bounds {
                     origin: bounds.origin + rect.origin,
@@ -176,22 +277,17 @@ impl Elsewhere {
     }
 }
 
-/// The letterbox: the largest rect of `geo::aspect()` that fits `area`, with an
-/// origin relative to it. Full width when the width is what runs out first,
-/// otherwise centred across it; top-aligned either way, so the map stays put as
-/// the window grows taller.
+/// The letterbox: a rect of `geo::aspect()` as tall as `area`, with an origin
+/// relative to it. The window is a tall shape first, so the map takes the
+/// height it is given: centred across the area when that leaves it narrower,
+/// which is the whole world at a glance, and flush left when it comes out
+/// wider, for the scroller to carry sideways.
 pub(super) fn fit(area: Size<Pixels>) -> Bounds<Pixels> {
-    let aspect = geo::aspect() as f32;
-    let height = area.width / aspect;
-    if height <= area.height {
-        Bounds::new(point(px(0.), px(0.)), size(area.width, height))
-    } else {
-        let width = area.height * aspect;
-        Bounds::new(
-            point((area.width - width) / 2., px(0.)),
-            size(width, area.height),
-        )
-    }
+    let width = area.height * geo::aspect() as f32;
+    Bounds::new(
+        point(((area.width - width) / 2.).max(px(0.)), px(0.)),
+        size(width, area.height),
+    )
 }
 
 /// `at` with its seconds and any odd minutes dropped, so a scrub that starts
@@ -228,14 +324,25 @@ mod tests {
     }
 
     #[test]
-    fn fills_the_width_when_the_area_is_the_taller_shape() {
-        let rect = fit(size(px(400.), px(300.)));
+    fn takes_the_height_and_overflows_a_taller_area() {
+        let rect = fit(size(px(400.), px(600.)));
         assert_eq!(rect.origin, point(px(0.), px(0.)));
-        assert_eq!(rect.size.width, px(400.));
+        assert_eq!(rect.size.height, px(600.));
         assert!(
-            close(rect.size.height, 400. / (360. / 140.)),
+            close(rect.size.width, 600. * (360. / 140.)),
             "{rect:?} is not the map's aspect"
         );
+    }
+
+    #[test]
+    fn fills_the_width_exactly_at_the_maps_own_shape() {
+        let rect = fit(size(px(360.), px(140.)));
+        assert_eq!(rect.origin, point(px(0.), px(0.)));
+        assert!(
+            close(rect.size.width, 360.),
+            "{rect:?} is not the full width"
+        );
+        assert_eq!(rect.size.height, px(140.));
     }
 
     #[test]
