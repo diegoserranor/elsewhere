@@ -29,21 +29,35 @@ const FORMAT: Toggle = Toggle {
     click: Elsewhere::toggle_format,
 };
 
-const MAP: Toggle = Toggle {
-    id: "show-map",
-    icon: "icons/map.svg",
-    size: px(16.),
-    tips: ["show on a map", "showing on a map"],
-    click: Elsewhere::show_map,
-};
+/// One way of showing the cities, as a segment of the view switch.
+struct Segment {
+    view: View,
+    id: &'static str,
+    icon: &'static str,
+    /// The tooltip, while another view is shown and while this one is.
+    tips: [&'static str; 2],
+}
 
-const GRID: Toggle = Toggle {
-    id: "show-grid",
-    icon: "icons/columns.svg",
-    size: px(16.),
-    tips: ["show as a day grid", "showing as a day grid"],
-    click: Elsewhere::show_grid,
-};
+const VIEWS: [Segment; 3] = [
+    Segment {
+        view: View::List,
+        id: "show-list",
+        icon: "icons/rows.svg",
+        tips: ["show as a list", "showing as a list"],
+    },
+    Segment {
+        view: View::Map,
+        id: "show-map",
+        icon: "icons/map.svg",
+        tips: ["show on a map", "showing on a map"],
+    },
+    Segment {
+        view: View::Grid,
+        id: "show-grid",
+        icon: "icons/columns.svg",
+        tips: ["show as a day grid", "showing as a day grid"],
+    },
+];
 
 const WESTWARD: Toggle = Toggle {
     id: "westward",
@@ -59,22 +73,17 @@ impl Elsewhere {
         self.close_editor(window, cx);
     }
 
-    /// Shows `to`, or the list again if `to` is already showing.
+    /// Shows `to`. Asking for the view already shown leaves it as it is.
     fn switch(&mut self, to: View, window: &mut Window, cx: &mut Context<Self>) {
-        self.view = if self.view == to { View::List } else { to };
+        if self.view == to {
+            return;
+        }
+        self.view = to;
         // Each showing of the grid opens on now, wherever it was left.
         self.grid_at_now.set(false);
         // The other views have no box for an open editor to live in, and its
         // focus would be stranded there.
         self.close_editor(window, cx);
-    }
-
-    fn show_map(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.switch(View::Map, window, cx);
-    }
-
-    fn show_grid(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.switch(View::Grid, window, cx);
     }
 
     fn toggle_westward(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -133,6 +142,58 @@ impl Elsewhere {
                         rgb(theme::OVERLAY0)
                     }),
             )
+    }
+
+    /// The three views side by side in a sunken trough, the one shown raised
+    /// and lit in the accent. Each segment keeps the toggles' box, so the
+    /// icons line up with the bin beside them.
+    fn render_switch(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_row()
+            .rounded_md()
+            .bg(rgb(theme::MANTLE))
+            .children(VIEWS.iter().map(|segment| {
+                let Segment {
+                    view,
+                    id,
+                    icon,
+                    tips,
+                } = *segment;
+                let on = self.view == view;
+                div()
+                    .id(id)
+                    .w_7()
+                    .h_5()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(transparent_black())
+                    .when(on, |segment| segment.bg(rgb(theme::SURFACE0)))
+                    .when(!on, |segment| {
+                        segment
+                            .cursor_pointer()
+                            .hover(|style| style.bg(rgba(theme::WASH)))
+                    })
+                    .tooltip(Tooltip::text(tips[on as usize]))
+                    .on_click(
+                        cx.listener(move |this, _event, window, cx| this.switch(view, window, cx)),
+                    )
+                    .child(
+                        svg()
+                            .path(icon)
+                            .size_4()
+                            // An svg paints only in a color set on itself; the
+                            // parent's does not reach it.
+                            .text_color(if on {
+                                rgb(theme::BLUE)
+                            } else {
+                                rgb(theme::OVERLAY0)
+                            }),
+                    )
+            }))
     }
 
     /// The strip under the search that says a what-if time is in force: which
@@ -241,8 +302,7 @@ impl Elsewhere {
                     .flex()
                     .flex_row()
                     .gap_1()
-                    .child(self.render_toggle(&MAP, self.view == View::Map, cx))
-                    .child(self.render_toggle(&GRID, self.view == View::Grid, cx))
+                    .child(self.render_switch(cx))
                     .children((dragging && self.drag.is_some()).then(|| self.render_bin(cx))),
             )
             .child(

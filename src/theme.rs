@@ -3,7 +3,8 @@
 
 /// The window's background.
 pub(crate) const BASE: u32 = 0x1e1e2e;
-/// Panels raised off the window: the results overlay, the drag preview.
+/// Panels raised off the window: the results overlay, the drag preview. Also
+/// the trough the view switch sits in.
 pub(crate) const MANTLE: u32 = 0x181825;
 /// The hover wash under anything clickable.
 pub(crate) const SURFACE0: u32 = 0x313244;
@@ -27,6 +28,6 @@ pub(crate) const YELLOW: u32 = 0xf9e2af;
 /// carry their alpha, so call sites wrap them in `rgba()`.
 pub(crate) const YELLOW_TINT: u32 = 0xf9e2af14;
 pub(crate) const YELLOW_EDGE: u32 = 0xf9e2af40;
-/// Active: the westward toggle on, the drag insertion line, the bin with a
+/// Active: the view shown, the westward toggle on, the drag insertion line, the bin with a
 /// row over it.
 pub(crate) const BLUE: u32 = 0x89b4fa;

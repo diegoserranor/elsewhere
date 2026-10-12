@@ -19,6 +19,7 @@ impl AssetSource for Assets {
                 "../assets/icons/clock-12.svg"
             ))),
             "icons/map.svg" => Some(Cow::Borrowed(include_bytes!("../assets/icons/map.svg"))),
+            "icons/rows.svg" => Some(Cow::Borrowed(include_bytes!("../assets/icons/rows.svg"))),
             "icons/columns.svg" => {
                 Some(Cow::Borrowed(include_bytes!("../assets/icons/columns.svg")))
             }
