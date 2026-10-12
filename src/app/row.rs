@@ -7,7 +7,6 @@ use jiff::Zoned;
 use super::drag::{DragRow, drop_target};
 use super::{Cancel, Commit, Elsewhere, Pin};
 use crate::clock;
-use crate::saved;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
 
@@ -64,7 +63,7 @@ pub(super) fn mono(cx: &App) -> Option<SharedString> {
 impl Elsewhere {
     pub(super) fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
         self.saved.retain(|id| *id != geonameid);
-        saved::save(&self.saved);
+        self.persist();
         if self
             .editing
             .as_ref()

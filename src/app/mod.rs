@@ -57,6 +57,9 @@ pub struct Elsewhere {
     index: Rc<SearchIndex>,
     /// The geonameids picked so far, oldest first.
     saved: Vec<u32>,
+    /// Whether the saved file was there but could not be read at startup, in
+    /// which case `saved` is not what it holds and must not be written over it.
+    saved_unreadable: bool,
     /// The zones of the saved cities.
     zones: clock::Zones,
     /// The geonameid a drag is carrying, while one is in flight.
@@ -100,7 +103,9 @@ impl Elsewhere {
         let picker = cx.new(|cx| SearchPicker::new(index.clone(), window, cx));
         cx.subscribe(&picker, Self::picked).detach();
 
-        let mut saved = saved::load();
+        let loaded = saved::load();
+        let saved_unreadable = loaded.is_none();
+        let mut saved = loaded.unwrap_or_default();
         // A regenerated dataset may have dropped a city saved by an older run.
         saved.retain(|id| index.city(*id).is_some());
         // Resolved up front, so rows restored from disk show a time straight away.
@@ -115,6 +120,7 @@ impl Elsewhere {
             picker,
             index,
             saved,
+            saved_unreadable,
             zones,
             drag: None,
             view: View::default(),
@@ -142,13 +148,20 @@ impl Elsewhere {
         self.save(*geonameid, cx);
     }
 
+    /// Writes the list to disk, unless the file could not be read at startup.
+    pub(super) fn persist(&self) {
+        if !self.saved_unreadable {
+            saved::save(&self.saved);
+        }
+    }
+
     fn save(&mut self, geonameid: u32, cx: &mut Context<Self>) {
         if !self.saved.contains(&geonameid) {
             self.saved.push(geonameid);
             if let Some(city) = self.index.city(geonameid) {
                 self.zones.resolve(&city.timezone);
             }
-            saved::save(&self.saved);
+            self.persist();
             // Only the hand-arranged order appends at the end; westward drops
             // the new row wherever its longitude falls.
             if !self.westward {

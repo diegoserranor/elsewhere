@@ -3,10 +3,13 @@
 //! would, and stays readable and hand-editable. Anything the file cannot
 //! offer, from a missing config dir to a garbled line, degrades to fewer
 //! cities rather than an error: a clock is not worth refusing to start over.
+//! The one thing it must not do is mistake a file it could not read for an
+//! empty one and write that back over it.
 
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 
 /// The comment the file opens with, so a curious reader knows what it holds.
 const HEADER: &str = "# elsewhere saved cities, one geonameid per line, in list order";
@@ -59,13 +62,26 @@ fn render(saved: &[u32]) -> String {
     out
 }
 
-pub fn load() -> Vec<u32> {
-    let Some(path) = path() else {
-        return Vec::new();
-    };
-    match fs::read_to_string(&path) {
-        Ok(text) => parse(&text),
-        Err(_) => Vec::new(),
+/// The list in the file at `path`. Only a file that is not there counts as
+/// empty; one that is there but cannot be read, whether for permissions or for
+/// not being text, is reported and comes back `None`.
+fn read(path: &Path) -> Option<Vec<u32>> {
+    match fs::read_to_string(path) {
+        Ok(text) => Some(parse(&text)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Some(Vec::new()),
+        Err(e) => {
+            eprintln!("{}: {e}", path.display());
+            None
+        }
+    }
+}
+
+/// The saved list, or `None` when the file could not be read. Then the session
+/// must not save: it would replace whatever the file holds with its own list.
+pub fn load() -> Option<Vec<u32>> {
+    match path() {
+        Some(path) => read(&path),
+        None => Some(Vec::new()),
     }
 }
 
@@ -153,6 +169,18 @@ mod tests {
     fn render_round_trips_through_parse() {
         let saved = [1850147, 2643743, 5128581];
         assert_eq!(parse(&render(&saved)), saved);
+    }
+
+    #[test]
+    fn a_missing_file_is_an_empty_list() {
+        let path = env::temp_dir().join("elsewhere-saved-that-does-not-exist");
+        assert_eq!(read(&path), Some(Vec::new()));
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_read_is_not_an_empty_list() {
+        // A directory is there but is no file to read.
+        assert_eq!(read(&env::temp_dir()), None);
     }
 
     #[test]
