@@ -1,10 +1,7 @@
-//! The home day laid out as hour rows, and how an hour reads in a saved
-//! city — gpui-free so the arithmetic can be tested on its own.
+//! The home day laid out as hour rows — gpui-free so the arithmetic can be
+//! tested on its own.
 
-use jiff::tz::{Offset, TimeZone};
 use jiff::{Span, Zoned};
-
-use crate::clock;
 
 /// The home day `now` falls in, as hour-long rows from its midnight: 24 on
 /// most days, 23 or 25 on the days the clocks change, because rows add whole
@@ -52,74 +49,18 @@ impl Day {
     }
 }
 
-/// An hour line's label, as a calendar's time gutter writes it: "9 AM" or
-/// "09:00", with the minutes kept in 12-hour time only where a zone is off
-/// the hour ("5:30 AM").
-pub fn hour_label(hour: i8, minute: i8, format: clock::Format) -> String {
-    match format {
-        clock::Format::TwentyFour => format!("{hour:02}:{minute:02}"),
-        clock::Format::Twelve => {
-            let half = if hour < 12 { "AM" } else { "PM" };
-            let hour = match hour % 12 {
-                0 => 12,
-                hour => hour,
-            };
-            if minute == 0 {
-                format!("{hour} {half}")
-            } else {
-                format!("{hour}:{minute:02} {half}")
-            }
-        }
-    }
-}
-
-/// "UTC", "+1", "−5", "+5:30" (U+2212 minus).
-pub fn offset_label(offset: Offset) -> String {
-    let seconds = offset.seconds();
-    if seconds == 0 {
-        return "UTC".to_string();
-    }
-    let sign = if seconds < 0 { '\u{2212}' } else { '+' };
-    let seconds = seconds.abs();
-    let hours = seconds / 3600;
-    let minutes = (seconds % 3600) / 60;
-    if minutes == 0 {
-        format!("{sign}{hours}")
-    } else {
-        format!("{sign}{hours}:{minutes:02}")
-    }
-}
-
-/// "America/New_York · EDT · daylight time"; "EDT · daylight time" without an
-/// IANA name.
-pub fn zone_detail(zone: &TimeZone, at: &Zoned) -> String {
-    let info = zone.to_offset_info(at.timestamp());
-    let kind = if info.dst().is_dst() {
-        "daylight"
-    } else {
-        "standard"
-    };
-    let tail = format!("{} · {kind} time", info.abbreviation());
-    match zone.iana_name() {
-        Some(name) => format!("{name} · {tail}"),
-        None => tail,
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use jiff::tz::TimeZone;
+
     use super::*;
 
-    /// An instant, as read in `zone`.
-    fn at(instant: &str, zone: &str) -> Zoned {
+    /// An instant, read from the given zone as home.
+    fn at(instant: &str, home: &str) -> Zoned {
         instant
             .parse::<jiff::Timestamp>()
             .expect("a valid timestamp")
-            .to_zoned(TimeZone::get(zone).expect("a zone this machine knows"))
-    }
-
-    fn zone(name: &str) -> TimeZone {
-        TimeZone::get(name).expect("a zone this machine knows")
+            .to_zoned(TimeZone::get(home).expect("a zone this machine knows"))
     }
 
     #[test]
@@ -185,57 +126,5 @@ mod tests {
         assert_eq!(day.row(24).datetime().to_string(), "2026-11-01T23:00:00");
         let late = at("2026-11-02T04:30:00Z", "America/New_York");
         assert_eq!(day.index(&late), Some(24));
-    }
-
-    #[test]
-    fn hour_label_both_formats() {
-        for (hour, minute, expected) in [(0, 0, "00:00"), (9, 30, "09:30"), (23, 0, "23:00")] {
-            assert_eq!(
-                hour_label(hour, minute, clock::Format::TwentyFour),
-                expected
-            );
-        }
-        for (hour, minute, expected) in [
-            (0, 0, "12 AM"),
-            (9, 0, "9 AM"),
-            (5, 30, "5:30 AM"),
-            (12, 0, "12 PM"),
-            (13, 45, "1:45 PM"),
-            (23, 0, "11 PM"),
-        ] {
-            assert_eq!(hour_label(hour, minute, clock::Format::Twelve), expected);
-        }
-    }
-
-    #[test]
-    fn offset_label_formats() {
-        assert_eq!(offset_label(Offset::from_seconds(0).unwrap()), "UTC");
-        assert_eq!(offset_label(Offset::from_seconds(3600).unwrap()), "+1");
-        assert_eq!(
-            offset_label(Offset::from_seconds(-5 * 3600).unwrap()),
-            "\u{2212}5"
-        );
-        assert_eq!(
-            offset_label(Offset::from_seconds(5 * 3600 + 1800).unwrap()),
-            "+5:30"
-        );
-        assert_eq!(
-            offset_label(Offset::from_seconds(-(3 * 3600 + 1800)).unwrap()),
-            "\u{2212}3:30"
-        );
-    }
-
-    #[test]
-    fn zone_detail_reads_the_abbreviation_and_daylight_status() {
-        let july = at("2026-07-15T12:00:00Z", "America/New_York");
-        assert_eq!(
-            zone_detail(&zone("America/New_York"), &july),
-            "America/New_York · EDT · daylight time"
-        );
-        let january = at("2026-01-15T12:00:00Z", "America/New_York");
-        assert_eq!(
-            zone_detail(&zone("America/New_York"), &january),
-            "America/New_York · EST · standard time"
-        );
     }
 }

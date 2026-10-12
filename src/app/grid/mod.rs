@@ -208,7 +208,7 @@ impl Elsewhere {
         // pins that, rather than the round hour.
         let instant = shown.unwrap_or(at).clone();
         let local = instant.with_time_zone(zone.clone());
-        let label = hours::hour_label(local.hour(), local.minute(), self.format);
+        let label = clock::hour_label(local.hour(), local.minute(), self.format);
         let bright = if self.pinned.is_some() {
             theme::YELLOW
         } else {
@@ -216,17 +216,17 @@ impl Elsewhere {
         };
         let slot = slot
             .when(shown.is_some(), |slot| slot.text_color(rgb(bright)))
-            .child(label);
+            .child(label.clone());
         let Some((anchor, city)) = column
             .geonameid
             .and_then(|id| Some((id, self.index.city(id)?)))
         else {
             return slot;
         };
-        let reading = clock::reading(&instant, zone, self.format);
-        let tip = match reading.day {
-            Some(day) => format!("{} in {} · {day}", reading.time, city.name),
-            None => format!("{} in {}", reading.time, city.name),
+        // Worded as the label is, with the day tag the list would give it.
+        let tip = match clock::reading(&instant, zone, self.format).day {
+            Some(day) => format!("{label} in {} · {day}", city.name),
+            None => format!("{label} in {}", city.name),
         };
         slot.cursor_pointer()
             .when(shown.is_none(), |slot| {

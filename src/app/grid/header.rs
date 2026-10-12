@@ -9,7 +9,7 @@ use super::{COLUMN, Column, INSET, LABEL};
 use crate::app::Elsewhere;
 use crate::app::drag::DragRow;
 use crate::app::tooltip::Tooltip;
-use crate::hours;
+use crate::clock;
 use crate::theme;
 
 /// The strip's height: two label lines and the air under them. Fixed, so a
@@ -46,7 +46,7 @@ impl Elsewhere {
         let offset = column.zone.as_ref().map(|zone| {
             shortened(div())
                 .text_color(rgb(theme::OVERLAY0))
-                .child(hours::offset_label(zone.to_offset(now.timestamp())))
+                .child(clock::offset_label(zone.to_offset(now.timestamp())))
         });
         let head = div()
             .flex_1()
@@ -60,7 +60,7 @@ impl Elsewhere {
             let tip = column
                 .zone
                 .as_ref()
-                .map(|zone| hours::zone_detail(zone, now))
+                .map(|zone| clock::zone_detail(zone, now))
                 .unwrap_or_default();
             return head
                 .child(
@@ -76,7 +76,7 @@ impl Elsewhere {
         };
         let label = self.index.label(city);
         let tip = match &column.zone {
-            Some(zone) => format!("{label} · {}", hours::zone_detail(zone, now)),
+            Some(zone) => format!("{label} · {}", clock::zone_detail(zone, now)),
             None => label.clone(),
         };
         head.child(
