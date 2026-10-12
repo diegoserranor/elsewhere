@@ -226,24 +226,23 @@ impl Elsewhere {
         else {
             return slot;
         };
-        let instant = if crosshair { now } else { at };
-        let reading = clock::reading(instant, zone, self.format);
+        let instant = if crosshair { now } else { at }.clone();
+        let reading = clock::reading(&instant, zone, self.format);
         let tip = match reading.day {
             Some(day) => format!("{} in {} · {day}", reading.time, city.name),
             None => format!("{} in {}", reading.time, city.name),
         };
-        let at = at.clone();
         slot.cursor_pointer()
             .when(!crosshair, |slot| {
                 slot.hover(|style| style.text_color(rgb(theme::SUBTEXT0)))
             })
             .tooltip(Tooltip::text(tip))
             // The click is the grid's whole form of the what-if time: no
-            // editor, just the hour this label already shows.
+            // editor, just the time this label already shows.
             .on_click(cx.listener(move |this, _event, _window, cx| {
                 this.pinned = Some(Pin {
                     anchor,
-                    at: at.clone(),
+                    at: instant.clone(),
                 });
                 cx.notify();
             }))
