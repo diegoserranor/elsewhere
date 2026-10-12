@@ -30,7 +30,7 @@ const FORMAT: Toggle = Toggle {
 };
 
 const MAP: Toggle = Toggle {
-    id: "map",
+    id: "show-map",
     icon: "icons/map.svg",
     size: px(16.),
     tips: ["show on a map", "showing on a map"],
@@ -38,7 +38,7 @@ const MAP: Toggle = Toggle {
 };
 
 const GRID: Toggle = Toggle {
-    id: "grid",
+    id: "show-grid",
     icon: "icons/columns.svg",
     size: px(16.),
     tips: ["show as a day grid", "showing as a day grid"],
