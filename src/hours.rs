@@ -1,4 +1,4 @@
-//! The home day laid out as 24 hour rows, and how an hour reads in a saved
+//! The home day laid out as hour rows, and how an hour reads in a saved
 //! city — gpui-free so the arithmetic can be tested on its own.
 
 use jiff::tz::{Offset, TimeZone};
@@ -6,28 +6,37 @@ use jiff::{Span, Zoned};
 
 use crate::clock;
 
-pub const ROWS: usize = 24;
-
-/// Rows add whole hours, which jiff applies in absolute time, so the day is
-/// always exactly this long.
-const DAY: f64 = 24.0 * 3600.0;
-
-/// The home day `now` falls in, as 24 hour-long rows from its midnight.
+/// The home day `now` falls in, as hour-long rows from its midnight: 24 on
+/// most days, 23 or 25 on the days the clocks change, because rows add whole
+/// hours in absolute time.
 pub struct Day {
     start: Zoned,
+    /// How long the day really is, from this midnight to the next.
+    seconds: i64,
 }
 
 impl Day {
     pub fn of(now: &Zoned) -> Day {
         let start = now.start_of_day().expect("a real zone has a start of day");
-        Day { start }
+        let end = start
+            .tomorrow()
+            .and_then(|tomorrow| tomorrow.start_of_day())
+            .expect("a real zone has a next day");
+        let seconds = end.timestamp().duration_since(start.timestamp()).as_secs();
+        Day { start, seconds }
+    }
+
+    /// How many rows the day takes: its hours, rounded up so a day that
+    /// changes by half an hour keeps its last partial hour.
+    pub fn rows(&self) -> usize {
+        (self.seconds as usize).div_ceil(3600)
     }
 
     /// `start + i` hours.
     pub fn row(&self, i: usize) -> Zoned {
         self.start
             .checked_add(Span::new().hours(i as i64))
-            .expect("24 hours past midnight never overflows a zone")
+            .expect("a day's hours past midnight never overflow a zone")
     }
 
     /// The row whose hour holds `at`, comparing instants so a DST day still
@@ -37,18 +46,21 @@ impl Day {
             .timestamp()
             .duration_since(self.start.timestamp())
             .as_secs();
-        (0..DAY as i64)
+        (0..self.seconds)
             .contains(&elapsed)
             .then_some((elapsed / 3600) as usize)
     }
 
-    /// `(at − start) / 24 h`, `0.0..1.0`; `None` outside `[start, start + 24h)`.
+    /// How far through the rows `at` falls, `0.0..1.0`; `None` outside the
+    /// day.
     pub fn fraction(&self, at: &Zoned) -> Option<f64> {
         let elapsed = at
             .timestamp()
             .duration_since(self.start.timestamp())
             .as_secs_f64();
-        (0.0..DAY).contains(&elapsed).then_some(elapsed / DAY)
+        (0.0..self.seconds as f64)
+            .contains(&elapsed)
+            .then_some(elapsed / (self.rows() * 3600) as f64)
     }
 }
 
@@ -165,15 +177,35 @@ mod tests {
     }
 
     #[test]
-    fn a_dst_change_day_still_has_24_rows_an_hour_apart_by_instant() {
+    fn a_plain_day_has_24_rows() {
+        let now = at("2026-08-15T14:30:00Z", "America/New_York");
+        assert_eq!(Day::of(&now).rows(), 24);
+    }
+
+    #[test]
+    fn a_spring_forward_day_has_23_rows_ending_on_its_own_last_hour() {
         // New York springs forward on 2026-03-08.
         let now = at("2026-03-08T12:00:00Z", "America/New_York");
         let day = Day::of(&now);
-        for i in 0..23 {
-            let span = day.row(i + 1).timestamp().as_second() - day.row(i).timestamp().as_second();
-            assert_eq!(span, 3600, "row {i} to {}", i + 1);
-        }
-        assert_eq!(day.index(&day.row(23)), Some(23));
+        assert_eq!(day.rows(), 23);
+        assert_eq!(day.row(2).hour(), 3);
+        assert_eq!(day.row(22).datetime().to_string(), "2026-03-08T23:00:00");
+        let last_minute = at("2026-03-09T03:59:00Z", "America/New_York");
+        assert_eq!(day.index(&last_minute), Some(22));
+    }
+
+    #[test]
+    fn a_fall_back_day_has_25_rows_repeating_the_doubled_hour() {
+        // New York falls back on 2026-11-01.
+        let now = at("2026-11-01T12:00:00Z", "America/New_York");
+        let day = Day::of(&now);
+        assert_eq!(day.rows(), 25);
+        assert_eq!(day.row(1).hour(), 1);
+        assert_eq!(day.row(2).hour(), 1);
+        assert_eq!(day.row(24).datetime().to_string(), "2026-11-01T23:00:00");
+        let late = at("2026-11-02T04:30:00Z", "America/New_York");
+        assert_eq!(day.index(&late), Some(24));
+        assert!(day.fraction(&late).is_some());
     }
 
     #[test]

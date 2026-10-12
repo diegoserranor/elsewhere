@@ -179,7 +179,7 @@ impl Elsewhere {
             .flex()
             .flex_col()
             .children(
-                (0..hours::ROWS).map(|i| {
+                (0..day.rows()).map(|i| {
                     self.render_hour(&day.row(i), column, i, crosshair == Some(i), now, cx)
                 }),
             )
@@ -273,10 +273,11 @@ impl Elsewhere {
         let fraction = day.fraction(now).unwrap_or(0.) as f32;
         let hours = self.grid_hours.clone();
         let centred = self.grid_centred.clone();
+        let rows = day.rows();
         // Hour line `i` stands at the middle of slot `i`.
-        let y = ROW / 2. + ROW * hours::ROWS as f32 * fraction;
+        let y = ROW / 2. + ROW * rows as f32 * fraction;
         canvas(
-            move |_bounds, window, _cx| centre(&hours, &centred, y, window),
+            move |_bounds, window, _cx| centre(&hours, &centred, rows, y, window),
             |_bounds, (), _window, _cx| {},
         )
         .absolute()
@@ -286,13 +287,19 @@ impl Elsewhere {
 
 /// Scrolls the hours so `line`, measured from the top of the day, sits a third
 /// of the way down the region, once per showing.
-fn centre(hours: &ScrollHandle, centred: &Rc<Cell<bool>>, line: Pixels, window: &mut gpui::Window) {
+fn centre(
+    hours: &ScrollHandle,
+    centred: &Rc<Cell<bool>>,
+    rows: usize,
+    line: Pixels,
+    window: &mut gpui::Window,
+) {
     let viewport = hours.bounds().size.height;
     if centred.get() || viewport <= px(0.) {
         return;
     }
     centred.set(true);
-    let most = (ROW * (hours::ROWS as f32 + 0.5) - viewport).max(px(0.));
+    let most = (ROW * (rows as f32 + 0.5) - viewport).max(px(0.));
     let top = (line - viewport / 3.).clamp(px(0.), most);
     hours.set_offset(point(px(0.), -top));
     // The frame that measured the region has already painted at the top.
