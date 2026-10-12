@@ -141,18 +141,18 @@ impl Elsewhere {
         now: &Zoned,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let crosshair = day.index(now);
+        let shown = day.index(now);
         div()
             .relative()
             .flex()
             .flex_row()
             // First, so the columns' labels and rules paint over it.
-            .children(crosshair.map(|i| self.render_highlight(i)))
+            .children(shown.map(|i| self.render_highlight(i)))
             .children(
                 columns
                     .iter()
                     .enumerate()
-                    .map(|(c, column)| self.render_column(day, column, c, crosshair, now, cx)),
+                    .map(|(c, column)| self.render_column(day, column, c, shown, now, cx)),
             )
             .child(self.render_centring(day, now))
     }
@@ -165,7 +165,7 @@ impl Elsewhere {
         day: &hours::Day,
         column: &Column,
         c: usize,
-        crosshair: Option<usize>,
+        shown: Option<usize>,
         now: &Zoned,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -178,22 +178,21 @@ impl Elsewhere {
             .border_color(rgb(theme::SURFACE0))
             .flex()
             .flex_col()
-            .children(
-                (0..day.rows()).map(|i| {
-                    self.render_hour(&day.row(i), column, i, crosshair == Some(i), now, cx)
-                }),
-            )
+            .children((0..day.rows()).map(|i| {
+                let shown = (shown == Some(i)).then_some(now);
+                self.render_hour(&day.row(i), column, i, shown, cx)
+            }))
     }
 
     /// One hour line as a column reads it, and the click that pins it. A city
-    /// with no zone keeps the slot, so its rule runs the whole day.
+    /// with no zone keeps the slot, so its rule runs the whole day. `shown` is
+    /// the shown instant, on the one hour that holds it.
     fn render_hour(
         &self,
         at: &Zoned,
         column: &Column,
         i: usize,
-        crosshair: bool,
-        now: &Zoned,
+        shown: Option<&Zoned>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let slot = div()
@@ -208,9 +207,10 @@ impl Elsewhere {
         let Some(zone) = &column.zone else {
             return slot;
         };
-        // The crosshair hour holds the shown instant, so its label says the
-        // minute it actually is there rather than the round hour.
-        let local = if crosshair { now } else { at }.with_time_zone(zone.clone());
+        // The highlighted hour says the minute it actually is there, and
+        // pins that, rather than the round hour.
+        let instant = shown.unwrap_or(at).clone();
+        let local = instant.with_time_zone(zone.clone());
         let label = hours::hour_label(local.hour(), local.minute(), self.format);
         let bright = if self.pinned.is_some() {
             theme::YELLOW
@@ -218,7 +218,7 @@ impl Elsewhere {
             theme::TEXT
         };
         let slot = slot
-            .when(crosshair, |slot| slot.text_color(rgb(bright)))
+            .when(shown.is_some(), |slot| slot.text_color(rgb(bright)))
             .child(label);
         let Some((anchor, city)) = column
             .geonameid
@@ -226,14 +226,13 @@ impl Elsewhere {
         else {
             return slot;
         };
-        let instant = if crosshair { now } else { at }.clone();
         let reading = clock::reading(&instant, zone, self.format);
         let tip = match reading.day {
             Some(day) => format!("{} in {} · {day}", reading.time, city.name),
             None => format!("{} in {}", reading.time, city.name),
         };
         slot.cursor_pointer()
-            .when(!crosshair, |slot| {
+            .when(shown.is_none(), |slot| {
                 slot.hover(|style| style.text_color(rgb(theme::SUBTEXT0)))
             })
             .tooltip(Tooltip::text(tip))
