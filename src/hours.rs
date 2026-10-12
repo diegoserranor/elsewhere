@@ -50,18 +50,6 @@ impl Day {
             .contains(&elapsed)
             .then_some((elapsed / 3600) as usize)
     }
-
-    /// How far through the rows `at` falls, `0.0..1.0`; `None` outside the
-    /// day.
-    pub fn fraction(&self, at: &Zoned) -> Option<f64> {
-        let elapsed = at
-            .timestamp()
-            .duration_since(self.start.timestamp())
-            .as_secs_f64();
-        (0.0..self.seconds as f64)
-            .contains(&elapsed)
-            .then_some(elapsed / (self.rows() * 3600) as f64)
-    }
 }
 
 /// An hour line's label, as a calendar's time gutter writes it: "9 AM" or
@@ -169,14 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn fraction_at_midday_is_one_half() {
-        let now = at("2026-08-15T00:00:00Z", "UTC");
-        let day = Day::of(&now);
-        let midday = at("2026-08-15T12:00:00Z", "UTC");
-        assert_eq!(day.fraction(&midday), Some(0.5));
-    }
-
-    #[test]
     fn a_plain_day_has_24_rows() {
         let now = at("2026-08-15T14:30:00Z", "America/New_York");
         assert_eq!(Day::of(&now).rows(), 24);
@@ -205,7 +185,6 @@ mod tests {
         assert_eq!(day.row(24).datetime().to_string(), "2026-11-01T23:00:00");
         let late = at("2026-11-02T04:30:00Z", "America/New_York");
         assert_eq!(day.index(&late), Some(24));
-        assert!(day.fraction(&late).is_some());
     }
 
     #[test]

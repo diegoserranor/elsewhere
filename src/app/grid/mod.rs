@@ -4,10 +4,7 @@
 
 mod header;
 
-use std::cell::Cell;
-use std::rc::Rc;
-
-use gpui::{Axis, Context, Pixels, ScrollHandle, canvas, div, point, prelude::*, px, rgb, rgba};
+use gpui::{Axis, Context, Pixels, canvas, div, point, prelude::*, px, rgb, rgba};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
 
@@ -77,6 +74,7 @@ impl Elsewhere {
         div()
             .relative()
             .size_full()
+            .child(self.render_scroll_to_now(&day, now))
             .child(
                 div()
                     .id("grid")
@@ -154,7 +152,6 @@ impl Elsewhere {
                     .enumerate()
                     .map(|(c, column)| self.render_column(day, column, c, shown, now, cx)),
             )
-            .child(self.render_centring(day, now))
     }
 
     /// One column of the day's hour lines, as they read there, against its own
@@ -264,42 +261,33 @@ impl Elsewhere {
             })
     }
 
-    /// Paints nothing: the first time the hours are laid out after the grid
-    /// is shown, it scrolls them so the shown instant sits a third of the way
-    /// down.
-    fn render_centring(&self, day: &hours::Day, now: &Zoned) -> impl IntoElement + use<> {
-        let fraction = day.fraction(now).unwrap_or(0.) as f32;
+    /// Paints nothing: laid over where the hours will be, and prepainted
+    /// before their scroller is, it scrolls them the first time the grid is
+    /// shown so the highlighted hour sits a third of the way down — in the
+    /// same frame, since the scroller clamps and applies the offset after.
+    fn render_scroll_to_now(&self, day: &hours::Day, now: &Zoned) -> impl IntoElement + use<> {
+        let shown = day.index(now);
         let hours = self.grid_hours.clone();
-        let centred = self.grid_centred.clone();
-        let rows = day.rows();
-        // Hour line `i` stands at the middle of slot `i`.
-        let y = ROW / 2. + ROW * rows as f32 * fraction;
+        let at_now = self.grid_at_now.clone();
         canvas(
-            move |_bounds, window, _cx| centre(&hours, &centred, rows, y, window),
+            move |bounds, _window, _cx| {
+                if at_now.get() {
+                    return;
+                }
+                at_now.set(true);
+                if let Some(i) = shown {
+                    // Hour line `i` stands at the middle of slot `i`.
+                    let line = ROW * i as f32 + ROW / 2.;
+                    let top = (line - bounds.size.height / 3.).max(px(0.));
+                    hours.set_offset(point(px(0.), -top));
+                }
+            },
             |_bounds, (), _window, _cx| {},
         )
         .absolute()
-        .inset_0()
+        .top(header::HEAD)
+        .bottom_0()
+        .left_0()
+        .right_0()
     }
-}
-
-/// Scrolls the hours so `line`, measured from the top of the day, sits a third
-/// of the way down the region, once per showing.
-fn centre(
-    hours: &ScrollHandle,
-    centred: &Rc<Cell<bool>>,
-    rows: usize,
-    line: Pixels,
-    window: &mut gpui::Window,
-) {
-    let viewport = hours.bounds().size.height;
-    if centred.get() || viewport <= px(0.) {
-        return;
-    }
-    centred.set(true);
-    let most = (ROW * (rows as f32 + 0.5) - viewport).max(px(0.));
-    let top = (line - viewport / 3.).clamp(px(0.), most);
-    hours.set_offset(point(px(0.), -top));
-    // The frame that measured the region has already painted at the top.
-    window.request_animation_frame();
 }

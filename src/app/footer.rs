@@ -63,7 +63,7 @@ impl Elsewhere {
     fn switch(&mut self, to: View, window: &mut Window, cx: &mut Context<Self>) {
         self.view = if self.view == to { View::List } else { to };
         // Each showing of the grid opens on now, wherever it was left.
-        self.grid_centred.set(false);
+        self.grid_at_now.set(false);
         // The other views have no box for an open editor to live in, and its
         // focus would be stranded there.
         self.close_editor(window, cx);

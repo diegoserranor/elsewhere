@@ -95,10 +95,10 @@ pub struct Elsewhere {
     grid_scroll: ScrollHandle,
     /// How far down the day the grid's hours have scrolled.
     grid_hours: ScrollHandle,
-    /// Whether the hours have been scrolled to the now line since the grid was
-    /// last shown. Set from the grid's canvas, which outlives the borrow that
-    /// built it, so it is shared.
-    grid_centred: Rc<Cell<bool>>,
+    /// Whether the hours have been scrolled to the shown instant since the
+    /// grid was last shown. Set from the grid's canvas, which outlives the
+    /// borrow that built it, so it is shared.
+    grid_at_now: Rc<Cell<bool>>,
     /// Wheel motion over the map that has not yet added up to a whole notch.
     scrub_carry: f32,
     /// The mono face the time column reads in, if the system has one.
@@ -144,7 +144,7 @@ impl Elsewhere {
             map_scroll: ScrollHandle::new(),
             grid_scroll: ScrollHandle::new(),
             grid_hours: ScrollHandle::new(),
-            grid_centred: Rc::new(Cell::new(false)),
+            grid_at_now: Rc::new(Cell::new(false)),
             scrub_carry: 0.,
             mono: row::mono(cx),
             _tick: tick(cx),
