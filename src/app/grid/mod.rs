@@ -108,6 +108,13 @@ impl Elsewhere {
                                     .min_h_0()
                                     .overflow_y_scroll()
                                     .track_scroll(&self.grid_hours)
+                                    // Left to itself gpui would turn a
+                                    // sideways swipe into a scroll down here
+                                    // as well as the columns' scroll across.
+                                    .map(|mut scroller| {
+                                        scroller.style().restrict_scroll_to_axis = Some(true);
+                                        scroller
+                                    })
                                     .child(self.render_body(&day, &columns, now, cx)),
                             ),
                     ),
