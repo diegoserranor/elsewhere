@@ -4,7 +4,7 @@
 
 mod header;
 
-use gpui::{Axis, Context, Pixels, canvas, div, point, prelude::*, px, rgb, rgba};
+use gpui::{Axis, Context, ElementId, Pixels, canvas, div, point, prelude::*, px, rgb, rgba};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
 
@@ -22,9 +22,8 @@ use crate::theme;
 /// this the grid scrolls sideways instead.
 const COLUMN: Pixels = px(68.);
 
-/// How far apart the hour lines stand. The hours do not share the region's
-/// height: spaced out like this they outgrow it and scroll, and the grid
-/// opens on now.
+/// How far apart the hour lines stand: spaced as a calendar's are, so the day
+/// outgrows the region and scrolls, opening on now.
 const ROW: Pixels = px(40.);
 
 /// The label face, a step under `text_xs`.
@@ -37,7 +36,7 @@ const INSET: Pixels = px(8.);
 const BAR: Pixels = px(22.);
 
 /// One column: home's, or a saved city's.
-pub(super) struct Column {
+struct Column {
     /// `None` for home's own column, which stands for no saved city.
     geonameid: Option<u32>,
     /// `None` when this machine does not know the city's zone: the column
@@ -149,8 +148,7 @@ impl Elsewhere {
             .children(
                 columns
                     .iter()
-                    .enumerate()
-                    .map(|(c, column)| self.render_column(day, column, c, shown, now, cx)),
+                    .map(|column| self.render_column(day, column, shown, now, cx)),
             )
     }
 
@@ -161,13 +159,18 @@ impl Elsewhere {
         &self,
         day: &hours::Day,
         column: &Column,
-        c: usize,
         shown: Option<usize>,
         now: &Zoned,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
+        // Keyed by city, as the list's rows are, so a column's hour state
+        // stays with its city when the order changes.
+        let id = match column.geonameid {
+            Some(geonameid) => ElementId::from(("column", geonameid as usize)),
+            None => ElementId::from("column-here"),
+        };
         div()
-            .id(("column", c))
+            .id(id)
             .flex_1()
             .min_w(COLUMN)
             .pb(ROW / 2.)
