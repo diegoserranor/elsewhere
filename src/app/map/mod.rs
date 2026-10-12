@@ -93,11 +93,11 @@ impl Elsewhere {
                             .children(self.render_pins(saved, now, dragging, window, cx)),
                     ),
             )
-            .when_some(layout.filter(Layout::overflows), |map, layout| {
+            .when(layout.is_some_and(|layout| layout.overflows()), |map| {
                 map.child(scrollbar(
                     &self.map_scroll,
                     Axis::Horizontal,
-                    layout.rect.size.height + SCROLLBAR_GAP,
+                    -SCROLLBAR_GAP,
                 ))
             })
     }

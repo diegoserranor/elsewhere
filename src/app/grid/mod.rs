@@ -1,0 +1,293 @@
+//! The grid view, set like a calendar's time gutter: home and then each saved
+//! city as a column of hour labels down its own rule, the home day's hours
+//! lined up across, and the shown instant highlighted in each.
+
+mod header;
+
+use std::cell::Cell;
+use std::rc::Rc;
+
+use gpui::{Axis, Context, Pixels, ScrollHandle, canvas, div, point, prelude::*, px, rgb, rgba};
+use jiff::Zoned;
+use jiff::tz::TimeZone;
+
+use super::scrollbar::scrollbar;
+use super::tooltip::Tooltip;
+use super::{Elsewhere, Pin};
+use crate::clock;
+use crate::hours;
+use crate::theme;
+
+/// The narrowest a column goes, and — a flex item's automatic minimum being
+/// its own content — what stops a long city name in a head from holding its
+/// column open. Sized to the widest label, "10:30 PM": eight glyphs at
+/// roughly 0.6em of the 11px face, plus the gap before the rule. Squeezed past
+/// this the grid scrolls sideways instead.
+const COLUMN: Pixels = px(68.);
+
+/// How far apart the hour lines stand. The hours do not share the region's
+/// height: spaced out like this they outgrow it and scroll, and the grid
+/// opens on now.
+const ROW: Pixels = px(40.);
+
+/// The label face, a step under `text_xs`.
+const LABEL: Pixels = px(11.);
+
+/// The room between a label's end and its column's rule.
+const INSET: Pixels = px(8.);
+
+/// The height of the bar behind the shown instant's labels.
+const BAR: Pixels = px(22.);
+
+/// One column: home's, or a saved city's.
+pub(super) struct Column {
+    /// `None` for home's own column, which stands for no saved city.
+    geonameid: Option<u32>,
+    /// `None` when this machine does not know the city's zone: the column
+    /// keeps its head and rule and leaves its labels out.
+    zone: Option<TimeZone>,
+}
+
+impl Elsewhere {
+    /// The grid region: the heads, which stay put, over the hour columns,
+    /// which scroll down the day. Both move together sideways.
+    pub(super) fn render_grid(
+        &self,
+        order: &[u32],
+        now: &Zoned,
+        dragging: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let day = hours::Day::of(now);
+        let home = Column {
+            geonameid: None,
+            zone: Some(now.time_zone().clone()),
+        };
+        // The list's order, so the westward toggle reorders the columns too.
+        let columns: Vec<Column> = std::iter::once(home)
+            .chain(order.iter().filter_map(|geonameid| {
+                let city = self.index.city(*geonameid)?;
+                Some(Column {
+                    geonameid: Some(*geonameid),
+                    zone: self.zones.get(&city.timezone).cloned(),
+                })
+            }))
+            .collect();
+
+        div()
+            .relative()
+            .size_full()
+            .child(
+                div()
+                    .id("grid")
+                    .size_full()
+                    .overflow_x_scroll()
+                    .track_scroll(&self.grid_scroll)
+                    // A plain wheel is the hours' to scroll down; only
+                    // shift+wheel, which the platform reports sideways, moves
+                    // the columns.
+                    .map(|mut scroller| {
+                        scroller.style().restrict_scroll_to_axis = Some(true);
+                        scroller
+                    })
+                    .child(
+                        // As wide as the columns at their floor, or the region
+                        // when that is wider: a scroller's content needs a
+                        // width of its own to overflow sideways.
+                        div()
+                            .h_full()
+                            .w(COLUMN * columns.len() as f32)
+                            .min_w_full()
+                            .flex()
+                            .flex_col()
+                            .child(self.render_heads(&columns, now, dragging, cx))
+                            .child(
+                                div()
+                                    .id("grid-hours")
+                                    .flex_1()
+                                    .min_h_0()
+                                    .overflow_y_scroll()
+                                    .track_scroll(&self.grid_hours)
+                                    .child(self.render_body(&day, &columns, now, cx)),
+                            ),
+                    ),
+            )
+            // Hung out in the window padding, as the list's is, beside the
+            // hours alone, and in the gap over the footer.
+            .child(
+                div()
+                    .absolute()
+                    .top(header::HEAD)
+                    .bottom_0()
+                    .left_0()
+                    .right_0()
+                    .child(scrollbar(&self.grid_hours, Axis::Vertical, px(-6.))),
+            )
+            .child(scrollbar(&self.grid_scroll, Axis::Horizontal, px(-6.)))
+    }
+
+    /// The columns side by side.
+    fn render_body(
+        &self,
+        day: &hours::Day,
+        columns: &[Column],
+        now: &Zoned,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let crosshair = day.index(now);
+        div()
+            .relative()
+            .flex()
+            .flex_row()
+            // First, so the columns' labels and rules paint over it.
+            .children(crosshair.map(|i| self.render_highlight(i)))
+            .children(
+                columns
+                    .iter()
+                    .enumerate()
+                    .map(|(c, column)| self.render_column(day, column, c, crosshair, now, cx)),
+            )
+            .child(self.render_centring(day, now))
+    }
+
+    /// One column of the day's hour lines, as they read there, against its own
+    /// rule. Each hour is a slot of `ROW` with its label at the middle, so the
+    /// hour lines fall half a row in from the top.
+    fn render_column(
+        &self,
+        day: &hours::Day,
+        column: &Column,
+        c: usize,
+        crosshair: Option<usize>,
+        now: &Zoned,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        div()
+            .id(("column", c))
+            .flex_1()
+            .min_w(COLUMN)
+            .pb(ROW / 2.)
+            .border_r_1()
+            .border_color(rgb(theme::SURFACE0))
+            .flex()
+            .flex_col()
+            .children(
+                (0..hours::ROWS).map(|i| {
+                    self.render_hour(&day.row(i), column, i, crosshair == Some(i), now, cx)
+                }),
+            )
+    }
+
+    /// One hour line as a column reads it, and the click that pins it. A city
+    /// with no zone keeps the slot, so its rule runs the whole day.
+    fn render_hour(
+        &self,
+        at: &Zoned,
+        column: &Column,
+        i: usize,
+        crosshair: bool,
+        now: &Zoned,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let slot = div()
+            .id(("hour", i))
+            .h(ROW)
+            .flex()
+            .items_center()
+            .justify_end()
+            .pr(INSET)
+            .text_size(LABEL)
+            .text_color(rgb(theme::OVERLAY0));
+        let Some(zone) = &column.zone else {
+            return slot;
+        };
+        // The crosshair hour holds the shown instant, so its label says the
+        // minute it actually is there rather than the round hour.
+        let local = if crosshair { now } else { at }.with_time_zone(zone.clone());
+        let label = hours::hour_label(local.hour(), local.minute(), self.format);
+        let bright = if self.pinned.is_some() {
+            theme::YELLOW
+        } else {
+            theme::TEXT
+        };
+        let slot = slot
+            .when(crosshair, |slot| slot.text_color(rgb(bright)))
+            .child(label);
+        let Some((anchor, city)) = column
+            .geonameid
+            .and_then(|id| Some((id, self.index.city(id)?)))
+        else {
+            return slot;
+        };
+        let instant = if crosshair { now } else { at };
+        let reading = clock::reading(instant, zone, self.format);
+        let tip = match reading.day {
+            Some(day) => format!("{} in {} · {day}", reading.time, city.name),
+            None => format!("{} in {}", reading.time, city.name),
+        };
+        let at = at.clone();
+        slot.cursor_pointer()
+            .when(!crosshair, |slot| {
+                slot.hover(|style| style.text_color(rgb(theme::SUBTEXT0)))
+            })
+            .tooltip(Tooltip::text(tip))
+            // The click is the grid's whole form of the what-if time: no
+            // editor, just the hour this label already shows.
+            .on_click(cx.listener(move |this, _event, _window, cx| {
+                this.pinned = Some(Pin {
+                    anchor,
+                    at: at.clone(),
+                });
+                cx.notify();
+            }))
+    }
+
+    /// The shown instant's hour, one bar across every column behind its
+    /// labels rather than a line struck through them: a plain wash while
+    /// live, the banner's yellow while pinned.
+    fn render_highlight(&self, i: usize) -> impl IntoElement + use<> {
+        div()
+            .absolute()
+            .left_0()
+            .right_0()
+            .top(ROW * i as f32 + (ROW - BAR) / 2.)
+            .h(BAR)
+            .rounded_md()
+            .map(|bar| match self.pinned {
+                Some(_) => bar.bg(rgba(theme::YELLOW_TINT)),
+                None => bar.bg(rgb(theme::SURFACE0)),
+            })
+    }
+
+    /// Paints nothing: the first time the hours are laid out after the grid
+    /// is shown, it scrolls them so the shown instant sits a third of the way
+    /// down.
+    fn render_centring(&self, day: &hours::Day, now: &Zoned) -> impl IntoElement + use<> {
+        let fraction = day.fraction(now).unwrap_or(0.) as f32;
+        let hours = self.grid_hours.clone();
+        let centred = self.grid_centred.clone();
+        // Hour line `i` stands at the middle of slot `i`.
+        let y = ROW / 2. + ROW * hours::ROWS as f32 * fraction;
+        canvas(
+            move |_bounds, window, _cx| centre(&hours, &centred, y, window),
+            |_bounds, (), _window, _cx| {},
+        )
+        .absolute()
+        .inset_0()
+    }
+}
+
+/// Scrolls the hours so `line`, measured from the top of the day, sits a third
+/// of the way down the region, once per showing.
+fn centre(hours: &ScrollHandle, centred: &Rc<Cell<bool>>, line: Pixels, window: &mut gpui::Window) {
+    let viewport = hours.bounds().size.height;
+    if centred.get() || viewport <= px(0.) {
+        return;
+    }
+    centred.set(true);
+    let most = (ROW * (hours::ROWS as f32 + 0.5) - viewport).max(px(0.));
+    let top = (line - viewport / 3.).clamp(px(0.), most);
+    hours.set_offset(point(px(0.), -top));
+    // The frame that measured the region has already painted at the top.
+    window.request_animation_frame();
+}

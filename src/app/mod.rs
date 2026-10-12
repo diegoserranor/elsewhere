@@ -9,6 +9,7 @@ use jiff::Zoned;
 
 mod drag;
 mod footer;
+mod grid;
 mod map;
 mod row;
 mod scrollbar;
@@ -34,12 +35,13 @@ actions!(pin_editor, [Commit, Cancel]);
 // picker lets it through only when it has nothing of its own to clear.
 actions!(elsewhere, [Unpin]);
 
-/// Which of the two ways the saved cities are shown.
+/// Which of the three ways the saved cities are shown.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum View {
     #[default]
     List,
     Map,
+    Grid,
 }
 
 /// A what-if time in effect.
@@ -64,7 +66,7 @@ pub struct Elsewhere {
     zones: clock::Zones,
     /// The geonameid a drag is carrying, while one is in flight.
     drag: Option<u32>,
-    /// Whether the cities are shown as a list or on a map. Like `westward`, a
+    /// Which of the three views the cities are shown in. Like `westward`, a
     /// view preference that is not persisted.
     view: View,
     /// Whether the list is shown ordered by longitude rather than by hand. A
@@ -89,6 +91,14 @@ pub struct Elsewhere {
     map_layout: Rc<Cell<Option<map::Layout>>>,
     /// How far the map has scrolled sideways, while it is wider than the region.
     map_scroll: ScrollHandle,
+    /// How far the grid's columns have scrolled sideways.
+    grid_scroll: ScrollHandle,
+    /// How far down the day the grid's hours have scrolled.
+    grid_hours: ScrollHandle,
+    /// Whether the hours have been scrolled to the now line since the grid was
+    /// last shown. Set from the grid's canvas, which outlives the borrow that
+    /// built it, so it is shared.
+    grid_centred: Rc<Cell<bool>>,
     /// Wheel motion over the map that has not yet added up to a whole notch.
     scrub_carry: f32,
     /// The mono face the time column reads in, if the system has one.
@@ -132,6 +142,9 @@ impl Elsewhere {
             land: Rc::new(land::load()),
             map_layout: Rc::new(Cell::new(None)),
             map_scroll: ScrollHandle::new(),
+            grid_scroll: ScrollHandle::new(),
+            grid_hours: ScrollHandle::new(),
+            grid_centred: Rc::new(Cell::new(false)),
             scrub_carry: 0.,
             mono: row::mono(cx),
             _tick: tick(cx),
@@ -242,6 +255,7 @@ impl Render for Elsewhere {
                     View::Map => {
                         region.child(self.render_map(&self.saved, &now, dragging, window, cx))
                     }
+                    View::Grid => region.child(self.render_grid(&order, &now, dragging, cx)),
                     View::List => region
                         .child(
                             div()

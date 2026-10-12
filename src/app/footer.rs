@@ -29,12 +29,20 @@ const FORMAT: Toggle = Toggle {
     click: Elsewhere::toggle_format,
 };
 
-const VIEW: Toggle = Toggle {
-    id: "view",
+const MAP: Toggle = Toggle {
+    id: "map",
     icon: "icons/map.svg",
     size: px(16.),
     tips: ["show on a map", "showing on a map"],
-    click: Elsewhere::toggle_view,
+    click: Elsewhere::show_map,
+};
+
+const GRID: Toggle = Toggle {
+    id: "grid",
+    icon: "icons/columns.svg",
+    size: px(16.),
+    tips: ["show as a day grid", "showing as a day grid"],
+    click: Elsewhere::show_grid,
 };
 
 const WESTWARD: Toggle = Toggle {
@@ -51,14 +59,22 @@ impl Elsewhere {
         self.close_editor(window, cx);
     }
 
-    fn toggle_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.view = match self.view {
-            View::List => View::Map,
-            View::Map => View::List,
-        };
-        // The other view has no box for an open editor to live in, and its
+    /// Shows `to`, or the list again if `to` is already showing.
+    fn switch(&mut self, to: View, window: &mut Window, cx: &mut Context<Self>) {
+        self.view = if self.view == to { View::List } else { to };
+        // Each showing of the grid opens on now, wherever it was left.
+        self.grid_centred.set(false);
+        // The other views have no box for an open editor to live in, and its
         // focus would be stranded there.
         self.close_editor(window, cx);
+    }
+
+    fn show_map(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.switch(View::Map, window, cx);
+    }
+
+    fn show_grid(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.switch(View::Grid, window, cx);
     }
 
     fn toggle_westward(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -225,7 +241,8 @@ impl Elsewhere {
                     .flex()
                     .flex_row()
                     .gap_1()
-                    .child(self.render_toggle(&VIEW, self.view == View::Map, cx))
+                    .child(self.render_toggle(&MAP, self.view == View::Map, cx))
+                    .child(self.render_toggle(&GRID, self.view == View::Grid, cx))
                     .children((dragging && self.drag.is_some()).then(|| self.render_bin(cx))),
             )
             .child(
@@ -241,7 +258,7 @@ impl Elsewhere {
                     // On a map the cities already stand where they stand, so
                     // there is no order left to choose.
                     .children(
-                        (self.saved.len() > 1 && self.view == View::List)
+                        (self.saved.len() > 1 && self.view != View::Map)
                             .then(|| self.render_toggle(&WESTWARD, self.westward, cx)),
                     ),
             )

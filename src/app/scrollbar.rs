@@ -6,7 +6,7 @@ use crate::theme;
 /// It reads the handle at paint time, after layout has settled, so it needs no
 /// state of its own — but it is display-only; the wheel scrolls. `inset` is
 /// where the bar sits across the other axis: the offset from the container's
-/// right edge for a vertical bar, from its top edge for a horizontal one.
+/// right edge for a vertical bar, from its bottom edge for a horizontal one.
 /// Negative hangs it outside the container, which is how the saved list keeps
 /// its bar out of the delete column.
 pub(super) fn scrollbar(handle: &ScrollHandle, axis: Axis, inset: Pixels) -> impl IntoElement {
@@ -52,6 +52,6 @@ pub(super) fn scrollbar(handle: &ScrollHandle, axis: Axis, inset: Pixels) -> imp
     .absolute()
     .map(|bar| match axis {
         Axis::Vertical => bar.top_1().bottom_1().right(inset).w(px(3.)),
-        Axis::Horizontal => bar.left_1().right_1().top(inset).h(px(3.)),
+        Axis::Horizontal => bar.left_1().right_1().bottom(inset).h(px(3.)),
     })
 }
