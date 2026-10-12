@@ -1,16 +1,18 @@
-//! The map view: the world painted in one canvas, land first, then the night
-//! it is turning through, with the saved cities laid over it as divs.
+//! The map view: the world painted in one canvas, land first, then its time
+//! zones and the night it is turning through, with the saved cities laid over
+//! it as divs.
 mod labels;
 mod pins;
 
 use gpui::{
     Axis, Bounds, Context, Path, PathBuilder, Pixels, Point, ScrollDelta, ScrollWheelEvent, Size,
-    Window, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
+    TextRun, Window, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
 };
 use jiff::{RoundMode, Span, Unit, Zoned, ZonedRound};
 
 use super::scrollbar::scrollbar;
 use super::{Elsewhere, Pin};
+use crate::clock;
 use crate::geo::{self, LonLat};
 use crate::theme;
 
@@ -19,6 +21,16 @@ const MERIDIAN_STEP: f64 = 15.0;
 /// How finely the terminator is sampled, in degrees of longitude. Its curve is
 /// gentle enough that this is well under a pixel of error at any window size.
 const NIGHT_STEP: f64 = 2.0;
+
+/// The time zone borders' stroke.
+const ZONE_LINE_WIDTH: Pixels = px(1.);
+/// The offsets along the bottom edge: their size, the line they sit in, and
+/// how far they stand above the meridian ticks.
+const OFFSET_SIZE: Pixels = px(10.);
+const OFFSET_LINE: Pixels = px(12.);
+const OFFSET_GAP: Pixels = px(2.);
+/// The meridian ticks' height.
+const TICK: Pixels = px(3.);
 
 /// How far one wheel notch moves the shown instant.
 const NOTCH_MINUTES: i64 = 15;
@@ -171,6 +183,7 @@ impl Elsewhere {
 
     fn render_world(&self, now: &Zoned) -> impl IntoElement + use<> {
         let land = self.land.clone();
+        let zones = self.zone_borders.clone();
         let remembered = self.map_layout.clone();
         let scroll = self.map_scroll.clone();
         let focus = self.focus();
@@ -222,7 +235,7 @@ impl Elsewhere {
                     size: rect.size,
                 }
             },
-            move |_bounds, rect: Bounds<Pixels>, window, _cx| {
+            move |_bounds, rect: Bounds<Pixels>, window, cx| {
                 let at = |place: LonLat| {
                     let (x, y) = geo::project(place);
                     point(
@@ -237,6 +250,12 @@ impl Elsewhere {
                     }
                 }
 
+                for border in zones.iter() {
+                    if let Some(path) = polyline(border.iter().copied().map(at)) {
+                        window.paint_path(path, rgb(theme::ZONE_LINE));
+                    }
+                }
+
                 if let Some(path) = polygon(geo::night(sun, NIGHT_STEP).into_iter().map(at)) {
                     window.paint_path(path, rgba(theme::NIGHT));
                 }
@@ -245,13 +264,35 @@ impl Elsewhere {
                 while lon < 180.0 {
                     let x = at(LonLat { lon, lat: 0.0 }).x;
                     window.paint_quad(fill(
-                        Bounds::new(
-                            point(x - px(0.5), rect.bottom() - px(3.)),
-                            size(px(1.), px(3.)),
-                        ),
+                        Bounds::new(point(x - px(0.5), rect.bottom() - TICK), size(px(1.), TICK)),
                         rgb(theme::SURFACE1),
                     ));
                     lon += MERIDIAN_STEP;
+                }
+
+                // Over the ticks, where the bottom edge runs through open
+                // ocean and the zones are the plain nautical ones.
+                let font = window.text_style().font();
+                for (lon, hours) in offset_marks() {
+                    let text = clock::offset_label(jiff::tz::offset(hours));
+                    let run = TextRun {
+                        len: text.len(),
+                        font: font.clone(),
+                        color: rgb(theme::OVERLAY0).into(),
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                    };
+                    let line =
+                        window
+                            .text_system()
+                            .shape_line(text.into(), OFFSET_SIZE, &[run], None);
+                    let origin = point(
+                        at(LonLat { lon, lat: 0.0 }).x - line.width / 2.,
+                        rect.bottom() - TICK - OFFSET_GAP - OFFSET_LINE,
+                    );
+                    // A label that fails to paint is only a label missing.
+                    line.paint(origin, OFFSET_LINE, window, cx).ok();
                 }
 
                 // The sun only ever stands between the tropics, but the crop is
@@ -315,12 +356,47 @@ fn polygon(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>> 
     builder.build().ok()
 }
 
+/// A stroke through `points`, or `None` for a run too short to be a line or
+/// one lyon cannot tessellate.
+fn polyline(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>> {
+    let points: Vec<_> = points.collect();
+    if points.len() < 2 {
+        return None;
+    }
+    let mut builder = PathBuilder::stroke(ZONE_LINE_WIDTH);
+    builder.add_polygon(&points, false);
+    builder.build().ok()
+}
+
+/// Where each offset label goes along the bottom edge, and the whole hours it
+/// reads: the middle of each 15° nautical zone, which is a meridian tick,
+/// except at the date line, where ±12 each get half a zone.
+fn offset_marks() -> impl Iterator<Item = (f64, i8)> {
+    let half = MERIDIAN_STEP / 4.0;
+    (-11..=11)
+        .map(|hours: i8| (f64::from(hours) * MERIDIAN_STEP, hours))
+        .chain([(-180.0 + half, -12), (180.0 - half, 12)])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn close(got: Pixels, want: f32) -> bool {
         (f32::from(got) - want).abs() < 0.01
+    }
+
+    #[test]
+    fn marks_each_offset_inside_its_nautical_zone() {
+        let marks: Vec<(f64, i8)> = offset_marks().collect();
+        assert_eq!(marks.len(), 25);
+        for (lon, hours) in marks {
+            let centre = f64::from(hours) * MERIDIAN_STEP;
+            assert!(
+                (lon - centre).abs() <= MERIDIAN_STEP / 2.0 && (-180.0..=180.0).contains(&lon),
+                "{hours} is marked at {lon}"
+            );
+        }
     }
 
     #[test]

@@ -53,3 +53,14 @@ SOFTWARE.
 ([naturalearthdata.com](https://www.naturalearthdata.com)), which is in the
 public domain, fetched from the GeoJSON mirror at
 [nvkelso/natural-earth-vector](https://github.com/nvkelso/natural-earth-vector).
+
+## timezone-boundary-builder
+
+`data/zones.tsv` is derived from the `timezones-with-oceans-now` and
+`timezones-now` releases of
+[timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder),
+built from [OpenStreetMap](https://www.openstreetmap.org/copyright) data.
+
+© OpenStreetMap contributors. The data is available under the
+[Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/),
+and so is `data/zones.tsv`, as a database derived from it.

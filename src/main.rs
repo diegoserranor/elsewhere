@@ -14,6 +14,7 @@ mod saved;
 mod search;
 mod theme;
 mod vendor;
+mod zones;
 
 fn main() {
     Application::new()

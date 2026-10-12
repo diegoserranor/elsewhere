@@ -24,6 +24,7 @@ use crate::saved;
 use crate::search::SearchIndex;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
+use crate::zones;
 use scrollbar::scrollbar;
 use search::{SearchEvent, SearchPicker};
 
@@ -85,6 +86,9 @@ pub struct Elsewhere {
     /// The world's coastlines, read once. The map's canvas closures outlive the
     /// borrow that built them, so they take a handle rather than a reference.
     land: Rc<Vec<Vec<geo::LonLat>>>,
+    /// The borders between time zones, read once and held the same way as
+    /// `land`.
+    zone_borders: Rc<Vec<Vec<geo::LonLat>>>,
     /// Where the map last drew itself. The canvas is the only thing that knows
     /// the letterbox, and it settles during prepaint; whatever is laid over the
     /// map reads it back from here.
@@ -140,6 +144,7 @@ impl Elsewhere {
             editing: None,
             saved_scroll: ScrollHandle::new(),
             land: Rc::new(land::load()),
+            zone_borders: Rc::new(zones::load()),
             map_layout: Rc::new(Cell::new(None)),
             map_scroll: ScrollHandle::new(),
             grid_scroll: ScrollHandle::new(),

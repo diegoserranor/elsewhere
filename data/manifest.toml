@@ -1,7 +1,8 @@
 # Snapshot of the source data used to generate the committed datasets.
 # Regenerate data/cities.tsv with scripts/fetch-geonames.sh and `cargo run --bin
 # geonames_gen`, data/land.tsv with scripts/fetch-naturalearth.sh and `cargo run
-# --bin land_gen`, then update the hashes below.
+# --bin land_gen`, data/zones.tsv with scripts/fetch-timezones.sh and `cargo run
+# --bin zones_gen`, then update the hashes below.
 
 [[file]]
 name = "cities5000.txt"
@@ -26,3 +27,17 @@ name = "ne_110m_land.geojson"
 url = "https://github.com/nvkelso/natural-earth-vector/raw/master/geojson/ne_110m_land.geojson"
 retrieved = 2026-09-04
 sha256 = "9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9"
+
+[[file]]
+name = "timezones-with-oceans-now.geojson.zip"
+url = "https://github.com/evansiroky/timezone-boundary-builder/releases/download/2026e/timezones-with-oceans-now.geojson.zip"
+release = "2026e"
+retrieved = 2026-10-12
+sha256 = "4807d56a629c4ade3648f49843376e7f41d32e90f9621d146d2682bbb5e20021"
+
+[[file]]
+name = "timezones-now.geojson.zip"
+url = "https://github.com/evansiroky/timezone-boundary-builder/releases/download/2026e/timezones-now.geojson.zip"
+release = "2026e"
+retrieved = 2026-10-12
+sha256 = "a46516d04c43b32f5c527a2e5a3d5ad0308e65144730a57f04eec66c49ce59d0"
