@@ -144,6 +144,18 @@ impl Elsewhere {
             .child(input.clone())
     }
 
+    /// What the list shows while there is nothing in it: a hint, sat where the
+    /// first row's label would be.
+    pub(super) fn render_empty(&self) -> impl IntoElement + use<> {
+        div()
+            .h(TIME_HEIGHT)
+            .flex()
+            .items_center()
+            .pl(WASH)
+            .text_color(rgb(theme::OVERLAY0))
+            .child("search for a city to start your list")
+    }
+
     /// The `use<>` says the row borrows none of the arguments, which is what
     /// lets `render` build the list inside a closure that holds `cx`.
     pub(super) fn render_row(

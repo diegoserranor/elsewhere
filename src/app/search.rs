@@ -93,6 +93,12 @@ impl SearchPicker {
         self.selected = 0;
     }
 
+    /// Whether the user is mid-search. The query, not the results: a dismissed
+    /// panel leaves the text in the input, and the list still sits under it.
+    pub(super) fn searching(&self) -> bool {
+        !self.query.is_empty()
+    }
+
     /// Hands the choice up and starts over on an empty input.
     fn pick(&mut self, geonameid: u32, cx: &mut Context<Self>) {
         self.reset(cx);

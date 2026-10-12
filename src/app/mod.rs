@@ -219,6 +219,9 @@ impl Render for Elsewhere {
         } else {
             self.saved.clone()
         };
+        // A search in progress floats its results over the list, so the hint
+        // waits until the input is clear again.
+        let empty = order.is_empty() && !self.picker.read(cx).searching();
         div()
             .key_context("Elsewhere")
             .on_action(cx.listener(|this, _: &Unpin, window, cx| this.unpin(window, cx)))
@@ -249,6 +252,7 @@ impl Render for Elsewhere {
                                 .gap_3()
                                 .overflow_y_scroll()
                                 .track_scroll(&self.saved_scroll)
+                                .when(empty, |list| list.child(self.render_empty()))
                                 .children(order.into_iter().filter_map(|geonameid| {
                                     self.render_row(geonameid, &now, dragging, cx)
                                 }))
