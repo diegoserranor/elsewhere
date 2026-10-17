@@ -1,6 +1,6 @@
 use gpui::{
-    App, Application, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, prelude::*,
-    px, size,
+    App, Application, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowDecorations,
+    WindowOptions, prelude::*, px, size,
 };
 
 mod app;
@@ -45,6 +45,8 @@ fn main() {
                         title: Some("elsewhere".into()),
                         ..Default::default()
                     }),
+                    // The window draws its own title bar.
+                    window_decorations: Some(WindowDecorations::Client),
                     ..Default::default()
                 },
                 |window, cx| cx.new(|cx| app::Elsewhere::new(window, cx)),

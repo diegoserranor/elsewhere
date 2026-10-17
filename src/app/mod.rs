@@ -11,9 +11,11 @@ mod drag;
 mod footer;
 mod grid;
 mod map;
+mod resize;
 mod row;
 mod scrollbar;
 pub(crate) mod search;
+mod titlebar;
 mod tooltip;
 
 use crate::cities;
@@ -271,13 +273,18 @@ impl Render for Elsewhere {
         div()
             .key_context("Elsewhere")
             .on_action(cx.listener(|this, _: &Unpin, window, cx| this.unpin(window, cx)))
+            .relative()
             .size_full()
             .flex()
             .flex_col()
             .gap_3()
-            .p_4()
+            // The title bar sits in what would be the top padding.
+            .px_4()
+            .pt_2()
+            .pb_4()
             .bg(rgb(theme::BASE))
             .text_color(rgb(theme::TEXT))
+            .child(self.render_titlebar(window, cx))
             .child(self.picker.clone())
             .children(self.render_banner(&now, cx))
             // The rows scroll on their own, so the input and toolbar above stay
@@ -313,5 +320,7 @@ impl Render for Elsewhere {
                 }
             }))
             .child(self.render_footer(dragging, cx))
+            // Last, so they lie over everything else.
+            .children(resize::handles(window))
     }
 }

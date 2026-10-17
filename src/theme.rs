@@ -40,3 +40,5 @@ pub(crate) const MAUVE_EDGE: u32 = 0xcba6f740;
 /// Active: the view shown, the westward toggle on, the drag insertion line, the bin with a
 /// row over it.
 pub(crate) const BLUE: u32 = 0x89b4fa;
+/// The close button under the pointer.
+pub(crate) const RED: u32 = 0xf38ba8;
