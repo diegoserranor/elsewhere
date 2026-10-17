@@ -33,6 +33,9 @@ const TIME_HEIGHT: Pixels = px(36.);
 /// would square off the row's left corners.
 const WASH: Pixels = px(8.);
 
+/// The space either side of the rule between two rows.
+const GAP: Pixels = px(6.);
+
 /// Mono faces for the time column, best first. Equal-width digits keep a
 /// reading from shifting as it ticks, which tabular figures would also do,
 /// except that `tnum` is missing from several of the sans faces gpui falls
@@ -163,6 +166,8 @@ impl Elsewhere {
         geonameid: u32,
         now: &Zoned,
         dragging: bool,
+        first: bool,
+        last: bool,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
         let city = self.index.city(geonameid)?;
@@ -177,98 +182,107 @@ impl Elsewhere {
             Some(reading) => (reading.time, reading.day),
             None => (clock::UNKNOWN.to_string(), None),
         };
+        // The rule that separates a row from the one above doubles as the
+        // insertion line: it lights up, and a drop lands, only in the
+        // hand-arranged order; the westward order does not reorder, but a row
+        // can still be dragged out of it to the bin. The first row wears the
+        // rule too, transparent, so a drop before it still has a line to show.
+        // The same inset sits either side of every rule, and none at the
+        // list's ends, where there is no rule to space from.
+        let target = drop_target(div(), !self.westward)
+            .when(!first, |row| row.border_color(rgb(theme::SURFACE0)))
+            .py(GAP)
+            .when(first, |row| row.pt_0())
+            .when(last, |row| row.pb_0())
+            .when(!self.westward, |row| {
+                row.on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
+                    this.drop(row.geonameid, Some(geonameid), cx)
+                }))
+            });
         Some(
-            // The transparent border is dressed on in either view, so an
-            // insertion line costs no layout and toggling the order does not
-            // lift the rows by its width. The line lights up, and a drop
-            // lands, only in the hand-arranged order; the westward order does
-            // not reorder, but a row can still be dragged out of it to the bin.
-            drop_target(div(), !self.westward)
-                .id(("row", geonameid as usize))
-                .flex()
-                .flex_row()
-                .gap_2()
-                .items_center()
-                .pl(WASH)
-                .rounded_md()
-                .hover(|style| style.bg(rgba(theme::WASH)))
-                // The whole row is the handle: there is no grip to find, and
-                // the cursor says so on hover.
-                .cursor_grab()
-                .on_drag(
-                    DragRow {
-                        geonameid,
-                        label: label.clone(),
-                    },
-                    Self::drag_preview(cx),
-                )
-                .when(!self.westward, |row| {
-                    row.on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
-                        this.drop(row.geonameid, Some(geonameid), cx)
-                    }))
-                })
-                .when(dragging && self.drag == Some(geonameid), |row| {
-                    row.opacity(0.4)
-                })
-                // `flex_1` on its own is not enough: a flex item's automatic
-                // minimum is its own content, so a long label would hold the
-                // row open and shove the time and the x past the right edge.
-                // `min_w_0` lets the label give way instead, and truncate ends
-                // it in an ellipsis rather than wrapping out of the row.
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .text_color(rgb(theme::SUBTEXT0))
-                        .child(label),
-                )
-                .children(
-                    day.map(|day| div().text_xs().text_color(rgb(theme::OVERLAY0)).child(day)),
-                )
-                .child(match &self.editing {
-                    Some((editing, input)) if *editing == geonameid => {
-                        self.render_editor(input, cx).into_any_element()
-                    }
-                    // The cell is fixed so the column lines up; the pill inside
-                    // wraps the digits, so the hover wash sits under them
-                    // rather than under the empty half of a right-aligned cell.
-                    // It runs the cell's full height, so the hover look is the
-                    // same box the editor opens into.
-                    _ => div()
-                        .w(time_width(self.format))
-                        .h(TIME_HEIGHT)
-                        .flex()
-                        .justify_end()
-                        .child(
-                            div()
-                                .id(("time", geonameid as usize))
-                                .h_full()
-                                .flex()
-                                .items_center()
-                                // The vendored input's inset, so the digits
-                                // hold still when the editor opens.
-                                .px(px(6.))
-                                .rounded_md()
-                                .when_some(self.mono.clone(), Styled::font_family)
-                                .when_some(
-                                    self.pinned.as_ref().map(|pin| pin.accent().text),
-                                    |cell, text| cell.text_color(rgb(text)),
-                                )
-                                .when(known, |cell| {
-                                    cell.cursor_pointer()
-                                        .hover(|style| style.bg(rgb(theme::SURFACE0)))
-                                        .on_click(cx.listener({
-                                            let time = time.clone();
-                                            move |this, _event, window, cx| {
-                                                this.edit(geonameid, time.clone(), window, cx)
-                                            }
-                                        }))
-                                })
-                                .child(time.clone()),
-                        )
-                        .into_any_element(),
-                }),
+            target.child(
+                div()
+                    .id(("row", geonameid as usize))
+                    .flex()
+                    .flex_row()
+                    .gap_2()
+                    .items_center()
+                    .pl(WASH)
+                    .rounded_md()
+                    .hover(|style| style.bg(rgba(theme::WASH)))
+                    // The whole row is the handle: there is no grip to find, and
+                    // the cursor says so on hover.
+                    .cursor_grab()
+                    .on_drag(
+                        DragRow {
+                            geonameid,
+                            label: label.clone(),
+                        },
+                        Self::drag_preview(cx),
+                    )
+                    .when(dragging && self.drag == Some(geonameid), |row| {
+                        row.opacity(0.4)
+                    })
+                    // `flex_1` on its own is not enough: a flex item's automatic
+                    // minimum is its own content, so a long label would hold the
+                    // row open and shove the time and the x past the right edge.
+                    // `min_w_0` lets the label give way instead, and truncate ends
+                    // it in an ellipsis rather than wrapping out of the row.
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_color(rgb(theme::SUBTEXT0))
+                            .child(label),
+                    )
+                    .children(
+                        day.map(|day| div().text_xs().text_color(rgb(theme::OVERLAY0)).child(day)),
+                    )
+                    .child(match &self.editing {
+                        Some((editing, input)) if *editing == geonameid => {
+                            self.render_editor(input, cx).into_any_element()
+                        }
+                        // The cell is fixed so the column lines up; the pill inside
+                        // wraps the digits, so the hover wash sits under them
+                        // rather than under the empty half of a right-aligned cell.
+                        // It runs the cell's full height, so the hover look is the
+                        // same box the editor opens into.
+                        _ => div()
+                            .w(time_width(self.format))
+                            .h(TIME_HEIGHT)
+                            .flex()
+                            .justify_end()
+                            .child(
+                                div()
+                                    .id(("time", geonameid as usize))
+                                    .h_full()
+                                    .flex()
+                                    .items_center()
+                                    // The vendored input's inset, so the digits
+                                    // hold still when the editor opens.
+                                    .px(px(6.))
+                                    .rounded_md()
+                                    .when_some(self.mono.clone(), Styled::font_family)
+                                    .when_some(
+                                        self.pinned.as_ref().map(|pin| pin.accent().text),
+                                        |cell, text| cell.text_color(rgb(text)),
+                                    )
+                                    .when(known, |cell| {
+                                        cell.cursor_pointer()
+                                            .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                                            .on_click(cx.listener({
+                                                let time = time.clone();
+                                                move |this, _event, window, cx| {
+                                                    this.edit(geonameid, time.clone(), window, cx)
+                                                }
+                                            }))
+                                    })
+                                    .child(time.clone()),
+                            )
+                            .into_any_element(),
+                    }),
+            ),
         )
     }
 }

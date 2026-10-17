@@ -28,11 +28,12 @@ impl Render for DragRow {
 
 /// Dresses an element as a landing place for a dragged row: a transparent top
 /// border that lights up as the insertion line while `open`. The caller
-/// attaches the `on_drop` that says where the row lands. Closed, the border
-/// is still worn, so the layout does not change with the view.
+/// attaches the `on_drop` that says where the row lands, and may color the
+/// border at rest, as the list's rules do. Closed, the border is still worn,
+/// so the layout does not change with the view.
 pub(super) fn drop_target(element: Div, open: bool) -> Div {
     element
-        .border_t_2()
+        .border_t_1()
         .border_color(transparent_black())
         .when(open, |element| {
             element.drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(theme::BLUE)))

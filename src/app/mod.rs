@@ -296,12 +296,13 @@ impl Render for Elsewhere {
                                 .size_full()
                                 .flex()
                                 .flex_col()
-                                .gap_3()
                                 .overflow_y_scroll()
                                 .track_scroll(&self.saved_scroll)
                                 .when(empty, |list| list.child(self.render_empty()))
-                                .children(order.into_iter().filter_map(|geonameid| {
-                                    self.render_row(geonameid, &now, dragging, cx)
+                                .children(order.iter().enumerate().filter_map(|(i, geonameid)| {
+                                    let first = i == 0;
+                                    let last = i + 1 == order.len();
+                                    self.render_row(*geonameid, &now, dragging, first, last, cx)
                                 }))
                                 .when(!self.westward && dragging && self.drag.is_some(), |list| {
                                     list.child(self.render_drop_tail(cx))
