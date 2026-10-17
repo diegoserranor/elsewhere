@@ -104,7 +104,7 @@ impl Elsewhere {
             && let Some(pinned) = clock::pin(input.read(cx).text(), zone, &Zoned::now())
         {
             self.pinned = Some(Pin {
-                anchor: *geonameid,
+                anchor: Some(*geonameid),
                 at: pinned,
             });
             cx.notify();
@@ -251,9 +251,10 @@ impl Elsewhere {
                                 .px(px(6.))
                                 .rounded_md()
                                 .when_some(self.mono.clone(), Styled::font_family)
-                                .when(self.pinned.is_some(), |cell| {
-                                    cell.text_color(rgb(theme::YELLOW))
-                                })
+                                .when_some(
+                                    self.pinned.as_ref().map(|pin| pin.accent().text),
+                                    |cell, text| cell.text_color(rgb(text)),
+                                )
                                 .when(known, |cell| {
                                     cell.cursor_pointer()
                                         .hover(|style| style.bg(rgb(theme::SURFACE0)))

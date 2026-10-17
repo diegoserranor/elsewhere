@@ -197,20 +197,31 @@ impl Elsewhere {
     }
 
     /// The strip under the search that says a what-if time is in force: which
-    /// row it was typed into, what it reads there, and the way out. Only
-    /// there while pinned; entering a mode on purpose earns the shift.
+    /// row it was typed into, what it reads there, and the way out. A pin with
+    /// no row reads in this machine's zone instead. Only there while pinned;
+    /// entering a mode on purpose earns the shift.
     pub(super) fn render_banner(
         &self,
         now: &Zoned,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
         let pin = self.pinned.as_ref()?;
-        let city = self.index.city(pin.anchor)?;
-        let time = self
-            .zones
-            .get(&city.timezone)
-            .map(|zone| clock::reading(now, zone, self.format).time)
-            .unwrap_or_else(|| clock::UNKNOWN.to_string());
+        let label = match pin.anchor {
+            Some(anchor) => {
+                let city = self.index.city(anchor)?;
+                let time = self
+                    .zones
+                    .get(&city.timezone)
+                    .map(|zone| clock::reading(now, zone, self.format).time)
+                    .unwrap_or_else(|| clock::UNKNOWN.to_string());
+                format!("viewing {time} in {}", city.name)
+            }
+            None => {
+                let time = clock::reading(now, now.time_zone(), self.format).time;
+                format!("viewing {time} here")
+            }
+        };
+        let accent = pin.accent();
         Some(
             div()
                 .flex()
@@ -221,11 +232,11 @@ impl Elsewhere {
                 .px_2()
                 .rounded_md()
                 .border_1()
-                .border_color(rgba(theme::YELLOW_EDGE))
-                .bg(rgba(theme::YELLOW_TINT))
+                .border_color(rgba(accent.edge))
+                .bg(rgba(accent.tint))
                 .text_xs()
-                .text_color(rgb(theme::YELLOW))
-                .child(format!("viewing {time} in {}", city.name))
+                .text_color(rgb(accent.text))
+                .child(label)
                 .child(
                     div()
                         .flex()

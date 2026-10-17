@@ -148,15 +148,9 @@ impl Elsewhere {
             return;
         }
 
-        // Without a zone to read the what-if time in there is nothing to pin.
-        let Some(anchor) = self
-            .pinned
-            .as_ref()
-            .map(|pin| pin.anchor)
-            .or_else(|| self.first_resolved())
-        else {
-            return;
-        };
+        // A scrub has no row behind it, so it keeps whatever anchor a pin
+        // already carries and otherwise takes none.
+        let anchor = self.pinned.as_ref().and_then(|pin| pin.anchor);
         let from = match &self.pinned {
             Some(pin) => pin.at.clone(),
             None => quarter_hour(&Zoned::now()),
@@ -169,16 +163,6 @@ impl Elsewhere {
         };
         self.pinned = Some(Pin { anchor, at });
         cx.notify();
-    }
-
-    /// The first saved city whose zone this machine knows, which is what a
-    /// scrub anchors to when no pin is carrying an anchor of its own.
-    fn first_resolved(&self) -> Option<u32> {
-        self.saved.iter().copied().find(|geonameid| {
-            self.index
-                .city(*geonameid)
-                .is_some_and(|city| self.zones.get(&city.timezone).is_some())
-        })
     }
 
     fn render_world(&self, now: &Zoned) -> impl IntoElement + use<> {

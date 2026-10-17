@@ -212,11 +212,10 @@ impl Elsewhere {
         let instant = shown.unwrap_or(at).clone();
         let local = instant.with_time_zone(zone.clone());
         let label = clock::hour_label(local.hour(), local.minute(), self.format);
-        let bright = if self.pinned.is_some() {
-            theme::YELLOW
-        } else {
-            theme::TEXT
-        };
+        let bright = self
+            .pinned
+            .as_ref()
+            .map_or(theme::TEXT, |pin| pin.accent().text);
         let slot = slot
             .when(shown.is_some(), |slot| slot.text_color(rgb(bright)))
             .child(label.clone());
@@ -240,7 +239,7 @@ impl Elsewhere {
             // editor, just the time this label already shows.
             .on_click(cx.listener(move |this, _event, _window, cx| {
                 this.pinned = Some(Pin {
-                    anchor,
+                    anchor: Some(anchor),
                     at: instant.clone(),
                 });
                 cx.notify();
@@ -249,7 +248,7 @@ impl Elsewhere {
 
     /// The shown instant's hour, one bar across every column behind its
     /// labels rather than a line struck through them: a plain wash while
-    /// live, the banner's yellow while pinned.
+    /// live, the banner's tint while pinned.
     fn render_highlight(&self, i: usize) -> impl IntoElement + use<> {
         div()
             .absolute()
@@ -258,8 +257,8 @@ impl Elsewhere {
             .top(ROW * i as f32 + (ROW - BAR) / 2.)
             .h(BAR)
             .rounded_md()
-            .map(|bar| match self.pinned {
-                Some(_) => bar.bg(rgba(theme::YELLOW_TINT)),
+            .map(|bar| match &self.pinned {
+                Some(pin) => bar.bg(rgba(pin.accent().tint)),
                 None => bar.bg(rgb(theme::SURFACE0)),
             })
     }

@@ -234,9 +234,10 @@ impl Elsewhere {
                     .id(("map-time", geonameid as usize))
                     .text_xs()
                     .when_some(self.mono.clone(), Styled::font_family)
-                    .when(self.pinned.is_some(), |cell| {
-                        cell.text_color(rgb(theme::YELLOW))
-                    })
+                    .when_some(
+                        self.pinned.as_ref().map(|pin| pin.accent().text),
+                        |cell, text| cell.text_color(rgb(text)),
+                    )
                     .when(marker.known, |cell| {
                         cell.cursor_pointer()
                             .rounded_sm()

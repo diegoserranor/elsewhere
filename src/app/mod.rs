@@ -47,10 +47,38 @@ pub(crate) enum View {
 
 /// A what-if time in effect.
 pub(crate) struct Pin {
-    /// The row the time was typed into, by geonameid.
-    pub(crate) anchor: u32,
+    /// The row the time was typed into, by geonameid. `None` when it came
+    /// from no row at all, as a scrub on the map does.
+    pub(crate) anchor: Option<u32>,
     /// The instant every row reads from, held in home's zone.
     pub(crate) at: Zoned,
+}
+
+/// The color a what-if time is drawn in: the readings, then the banner's fill
+/// and edge. `tint` and `edge` carry their alpha.
+pub(crate) struct Accent {
+    pub(crate) text: u32,
+    pub(crate) tint: u32,
+    pub(crate) edge: u32,
+}
+
+impl Pin {
+    /// Yellow for a time typed into a row, mauve for one scrubbed to, so the
+    /// two read apart at a glance.
+    pub(crate) fn accent(&self) -> Accent {
+        match self.anchor {
+            Some(_) => Accent {
+                text: theme::YELLOW,
+                tint: theme::YELLOW_TINT,
+                edge: theme::YELLOW_EDGE,
+            },
+            None => Accent {
+                text: theme::MAUVE,
+                tint: theme::MAUVE_TINT,
+                edge: theme::MAUVE_EDGE,
+            },
+        }
+    }
 }
 
 pub struct Elsewhere {
