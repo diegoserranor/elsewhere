@@ -84,8 +84,8 @@ impl Elsewhere {
     }
 
     /// The strip along the top that stands in for the title bar the window
-    /// goes without: empty space that moves the window, a double click on it
-    /// maximizing, and the window's controls on the right.
+    /// goes without: the app's name and empty space that move the window, a
+    /// double click on them maximizing, and the window's controls on the right.
     pub(super) fn render_titlebar(
         &self,
         window: &mut Window,
@@ -101,16 +101,24 @@ impl Elsewhere {
             .flex_row()
             .items_center()
             .h_5()
-            .child(div().flex_1().h_full().on_mouse_down(
-                MouseButton::Left,
-                |event: &MouseDownEvent, window, _| {
-                    if event.click_count == 2 {
-                        window.zoom_window();
-                    } else {
-                        window.start_window_move();
-                    }
-                },
-            ))
+            // The name rides inside the empty space, so it moves the window too.
+            .child(
+                div()
+                    .flex_1()
+                    .h_full()
+                    .flex()
+                    .items_center()
+                    .text_xs()
+                    .text_color(rgb(theme::OVERLAY0))
+                    .child("elsewhere")
+                    .on_mouse_down(MouseButton::Left, |event: &MouseDownEvent, window, _| {
+                        if event.click_count == 2 {
+                            window.zoom_window();
+                        } else {
+                            window.start_window_move();
+                        }
+                    }),
+            )
             .child(
                 div()
                     .flex()
